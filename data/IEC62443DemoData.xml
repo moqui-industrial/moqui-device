@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+IEC 62443 demonstration data.
+
+Graph-to-Device convention used by this data set:
+  * GraphVertex.label is exactly the deviceId represented by the vertex.
+  * GraphEdge.label is exactly the deviceId of the logical communication
+    Channel represented by the edge. Multiple physical-hop edges may use
+    the same Channel deviceId as their label.
+  * DeviceMathModel binds the complete graph-backed MathModel to the SUC,
+    Zone, Conduit, or other Device/DeviceGroup whose topology it describes.
+
+The original source diagram is DeviceContent. GraphContent is intentionally
+not used here because GraphVertex and GraphEdge materialize the topology.
+-->
+<entity-facade-xml type="seed">
+
+    <!-- ========================================================= -->
+    <!-- SUC, Zones, Conduit, assets and logical Channel            -->
+    <!-- ========================================================= -->
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_SUC" deviceTypeEnumId="DgtSUC"
+            description="IEC 62443 demonstration system under consideration"/>
+    <moqui.device.DeviceGroup deviceId="IEC62443_DEMO_SUC" groupName="Demo Packaging SUC"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_ZONE_PROCESS" deviceTypeEnumId="DgtSecurityZone"
+            description="Process control security zone"/>
+    <moqui.device.DeviceGroup deviceId="IEC62443_DEMO_ZONE_PROCESS" groupName="Process Control Zone"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_ZONE_MES" deviceTypeEnumId="DgtSecurityZone"
+            description="Manufacturing execution security zone"/>
+    <moqui.device.DeviceGroup deviceId="IEC62443_DEMO_ZONE_MES" groupName="MES Zone"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_CONDUIT" deviceTypeEnumId="DgtSecurityConduit"
+            description="Conduit connecting the process and MES zones"/>
+    <moqui.device.DeviceGroup deviceId="IEC62443_DEMO_CONDUIT" groupName="Process to MES Conduit"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_PLC" deviceTypeEnumId="DtPLC"
+            description="Process PLC in the process control zone"/>
+    <moqui.device.PhysicalDevice deviceId="IEC62443_DEMO_PLC" deviceName="Demo Process PLC"
+            vendorName="Demo Vendor" modelName="PLC-1500" firmwareVersion="1.0"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_MES" deviceTypeEnumId="DtIndustrialServer"
+            description="MES server in the MES zone"/>
+    <moqui.device.PhysicalDevice deviceId="IEC62443_DEMO_MES" deviceName="Demo MES Server"
+            vendorName="Demo Vendor" modelName="Industrial Server" operatingSystem="Linux"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_FIREWALL" deviceTypeEnumId="DtFirewall"
+            description="Firewall implementing the process to MES conduit"/>
+    <moqui.device.PhysicalDevice deviceId="IEC62443_DEMO_FIREWALL" deviceName="Demo OT Firewall"
+            vendorName="Demo Vendor" modelName="OT-FW-01" firmwareVersion="1.0"/>
+
+    <moqui.device.Device deviceId="IEC62443_DEMO_CHANNEL" deviceTypeEnumId="DtCommunicationChannel"
+            description="Logical OPC UA channel from process PLC to MES"/>
+
+    <!-- The SUC contains nested Zone and Conduit DeviceGroups. -->
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_SUC"
+            memberDeviceId="IEC62443_DEMO_ZONE_PROCESS" purposeEnumId="DgmpSecurityZone" sequenceNum="10"/>
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_SUC"
+            memberDeviceId="IEC62443_DEMO_CONDUIT" purposeEnumId="DgmpSecurityConduit" sequenceNum="20"/>
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_SUC"
+            memberDeviceId="IEC62443_DEMO_ZONE_MES" purposeEnumId="DgmpSecurityZone" sequenceNum="30"/>
+
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_ZONE_PROCESS"
+            memberDeviceId="IEC62443_DEMO_PLC" purposeEnumId="DgmpZoneAsset" sequenceNum="10"/>
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_ZONE_MES"
+            memberDeviceId="IEC62443_DEMO_MES" purposeEnumId="DgmpZoneAsset" sequenceNum="10"/>
+
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_CONDUIT"
+            memberDeviceId="IEC62443_DEMO_CHANNEL" purposeEnumId="DgmpCommunicationChannel" sequenceNum="10"/>
+    <moqui.device.DeviceGroupMember deviceId="IEC62443_DEMO_CONDUIT"
+            memberDeviceId="IEC62443_DEMO_FIREWALL" purposeEnumId="DgmpConduitDevice" sequenceNum="20"/>
+
+    <!-- Authoritative customer source document. In production contentLocation points
+         to the real content repository location supplied by the customer. -->
+    <moqui.device.DeviceContent deviceContentId="IEC62443_DEMO_NETWORK_DIAGRAM"
+            deviceId="IEC62443_DEMO_SUC" contentTypeEnumId="DCntNetworkDiagram"
+            contentLocation="demo://iec62443/packaging-network-diagram.pdf" sequenceNum="10"
+            description="Source network diagram from which the demo topology was extracted"/>
+
+    <!-- ========================================================= -->
+    <!-- Graph-backed cyber security topology                      -->
+    <!-- ========================================================= -->
+
+    <moqui.math.MathModelDef mathModelDefId="IEC62443_NETWORK_TOPOLOGY_DEF"
+            modelTypeEnumId="MmtCyberSecurityTopology" usageContextEnumId="MmucDocumentation"
+            domainEnumId="MmdCyberSecurity" modelName="IEC 62443 Network Topology"
+            description="Graph-backed topology used to partition an SUC into Zones, Conduits and Channels"
+            versionNumber="1" releaseStatusId="MathModelProduction"/>
+
+    <moqui.math.Graph graphId="IEC62443_DEMO_NETWORK_GRAPH" graphTypeEnumId="GtDirectedMulti"
+            graphOrder="3" size="2" loopsAllowed="N" isConnected="Y" isWeighted="N"
+            name="Demo Packaging Network Topology"
+            description="As-built network topology extracted from the source DeviceContent"/>
+
+    <!-- Vertex labels are canonical deviceId values. -->
+    <moqui.math.GraphVertex graphVertexId="IEC62443_GV_PLC" graphId="IEC62443_DEMO_NETWORK_GRAPH"
+            label="IEC62443_DEMO_PLC"/>
+    <moqui.math.GraphVertex graphVertexId="IEC62443_GV_FIREWALL" graphId="IEC62443_DEMO_NETWORK_GRAPH"
+            label="IEC62443_DEMO_FIREWALL" isCutVertex="Y"/>
+    <moqui.math.GraphVertex graphVertexId="IEC62443_GV_MES" graphId="IEC62443_DEMO_NETWORK_GRAPH"
+            label="IEC62443_DEMO_MES"/>
+
+    <!-- Both physical hops belong to the same logical Channel Device. -->
+    <moqui.math.GraphEdge graphEdgeId="IEC62443_GE_PLC_FW" graphId="IEC62443_DEMO_NETWORK_GRAPH"
+            edgeTypeEnumId="GetDirected" fromVertexId="IEC62443_GV_PLC" toVertexId="IEC62443_GV_FIREWALL"
+            isDirected="Y" isLoop="N" label="IEC62443_DEMO_CHANNEL"/>
+    <moqui.math.GraphEdge graphEdgeId="IEC62443_GE_FW_MES" graphId="IEC62443_DEMO_NETWORK_GRAPH"
+            edgeTypeEnumId="GetDirected" fromVertexId="IEC62443_GV_FIREWALL" toVertexId="IEC62443_GV_MES"
+            isDirected="Y" isLoop="N" label="IEC62443_DEMO_CHANNEL"/>
+
+    <moqui.math.MathModel mathModelId="IEC62443_DEMO_NETWORK_MODEL"
+            mathModelDefId="IEC62443_NETWORK_TOPOLOGY_DEF" graphId="IEC62443_DEMO_NETWORK_GRAPH"
+            sourceEnumId="MmsMeasured" modelAlias="Demo as-built network topology"
+            description="Customer-specific topology represented by GraphVertex and GraphEdge"
+            statusId="MathModelProduction" statusFlowId="MathModelStatusFlow"/>
+
+    <moqui.device.DeviceMathModel deviceId="IEC62443_DEMO_SUC"
+            mathModelId="IEC62443_DEMO_NETWORK_MODEL" bindingPurposeEnumId="MmbpCyberSecurityTopology"
+            sequenceNum="10" fromDate="2026-01-01 00:00:00.000"
+            description="As-built cyber security topology of the demo SUC"/>
+
+    <!-- ========================================================= -->
+    <!-- Zone, Conduit and Channel parameter values                -->
+    <!-- ========================================================= -->
+
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR1" parameterDefId="SecSlTFr1"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="3" sequenceNum="1"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR2" parameterDefId="SecSlTFr2"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="3" sequenceNum="2"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR3" parameterDefId="SecSlTFr3"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="3" sequenceNum="3"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR4" parameterDefId="SecSlTFr4"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="2" sequenceNum="4"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR5" parameterDefId="SecSlTFr5"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="3" sequenceNum="5"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR6" parameterDefId="SecSlTFr6"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="2" sequenceNum="6"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SLT_FR7" parameterDefId="SecSlTFr7"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" numericValue="3" sequenceNum="7"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_CRITICALITY" parameterDefId="SecCriticality"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" parameterEnumId="SecCritHigh" sequenceNum="20"/>
+    <moqui.math.Parameter parameterId="IEC62443_PROCESS_SAFETY" parameterDefId="SecSafetyRelated"
+            deviceId="IEC62443_DEMO_ZONE_PROCESS" symbolicValue="N" sequenceNum="21"/>
+
+    <moqui.math.Parameter parameterId="IEC62443_CHANNEL_PROTOCOL" parameterDefId="SecChannelProtocol"
+            deviceId="IEC62443_DEMO_CHANNEL" symbolicValue="OPC UA" sequenceNum="30"/>
+    <moqui.math.Parameter parameterId="IEC62443_CHANNEL_TARGET_PORT" parameterDefId="SecChannelTargetPort"
+            deviceId="IEC62443_DEMO_CHANNEL" numericValue="4840" sequenceNum="31"/>
+    <moqui.math.Parameter parameterId="IEC62443_CHANNEL_DIRECTION" parameterDefId="SecChannelDirection"
+            deviceId="IEC62443_DEMO_CHANNEL" parameterEnumId="ChDirOutbound" sequenceNum="32"/>
+    <moqui.math.Parameter parameterId="IEC62443_CHANNEL_ENCRYPTED" parameterDefId="SecChannelEncrypted"
+            deviceId="IEC62443_DEMO_CHANNEL" symbolicValue="Y" sequenceNum="33"/>
+    <moqui.math.Parameter parameterId="IEC62443_CHANNEL_AUTHENTICATED" parameterDefId="SecChannelAuthenticated"
+            deviceId="IEC62443_DEMO_CHANNEL" symbolicValue="Y" sequenceNum="34"/>
+
+</entity-facade-xml>

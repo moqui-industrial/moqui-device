@@ -15,6 +15,18 @@ along with this software (see the LICENSE.md file). If not, see
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
+    <service verb="call" noun="GatewayEndpoint" type="remote-rest" method="post"
+            location="${url}">
+        <description>Direct HTTP POST call to standalone moqui-device-gateway endpoint.</description>
+        <in-parameters>
+            <parameter name="url" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="response"/>
+            <parameter name="files" type="List"/>
+        </out-parameters>
+    </service>
+
     <service verb="run" noun="GatewayDeviceRequest" authenticate="false" transaction="ignore">
         <description>
             Implements run#DeviceRequestInternal for the standalone moqui-device-gateway process.
@@ -71,63 +83,50 @@ along with this software (see the LICENSE.md file). If not, see
         </description>
         <implements service="moqui.device.DeviceServices.run#DeviceRequestInternal"/>
         <actions><script><![CDATA[
-            import org.moqui.util.RestClient
-
             // requestItemList and bulkRequestItemList intentionally not used —
             // the gateway re-queries the DB for all fieldbus configuration.
 
             // resolve gateway base URL and optional API key
-            String rawUri = request.brokerUri
+            const rawUri = request.brokerUri;
             if (!rawUri) {
-                ec.message.addError("DeviceRequest ${request.requestName} (deviceId=${request.deviceId}) " +
-                    "is missing brokerUri. Set brokerUri to the gateway REST base URL " +
-                    "(e.g. http://gateway-host:8081 or http://gateway-host:8081?apiKey=secret).")
-                return
+                ec.message.addError(`DeviceRequest ${request.requestName} (deviceId=${request.deviceId}) is missing brokerUri. Set brokerUri to the gateway REST base URL (e.g. http://gateway-host:8081 or http://gateway-host:8081?apiKey=secret).`);
+                return;
             }
 
-            String gatewayBaseUrl = rawUri
-            String apiKey = null
-            int qIdx = rawUri.indexOf('?')
+            let gatewayBaseUrl = rawUri;
+            let apiKey = null;
+            const qIdx = rawUri.indexOf('?');
             if (qIdx >= 0) {
-                gatewayBaseUrl = rawUri.substring(0, qIdx)
-                rawUri.substring(qIdx + 1).split('&').each { String kv ->
-                    String[] parts = kv.split('=', 2)
-                    if (parts.length == 2 && 'apiKey' == parts[0].trim()) apiKey = parts[1].trim()
+                gatewayBaseUrl = rawUri.substring(0, qIdx);
+                const queryParams = rawUri.substring(qIdx + 1).split('&');
+                for (const kv of queryParams) {
+                    const parts = kv.split('=', 2);
+                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
                 }
             }
-            gatewayBaseUrl = gatewayBaseUrl.replaceAll('/+$', '')
+            gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
 
             // resolve gateway-side requestName from DeviceRequest.query
-            String gwRequestName = request.query
+            const gwRequestName = request.query;
             if (!gwRequestName) {
-                ec.message.addError("DeviceRequest ${request.requestName} (deviceId=${request.deviceId}) " +
-                    "is missing query. Set query to the gateway-side requestName " +
-                    "(the DeviceRequest the gateway will look up in the shared DB).")
-                return
+                ec.message.addError(`DeviceRequest ${request.requestName} (deviceId=${request.deviceId}) is missing query. Set query to the gateway-side requestName (the DeviceRequest the gateway will look up in the shared DB).`);
+                return;
             }
 
-            String reqType = request.requestTypeEnumId
-            String path = "/api/device-request/run/${gwRequestName}"
+            const reqType = request.requestTypeEnumId;
+            const path = `/api/device-request/run/${gwRequestName}`;
 
             // protocol detection (for logging only)
-            boolean isOpcUa = ('DcdOpcUa' == connection?.driverEnumId)
-            ec.logger.info("Dispatching ${reqType} to gateway ${gatewayBaseUrl}${path} " +
-                "[protocol=${isOpcUa ? 'OPC UA' : 'MQTT'}, gwRequest=${gwRequestName}]")
+            const isOpcUa = ('DcdOpcUa' === connection?.driverEnumId);
+            ec.logger.info(`Dispatching ${reqType} to gateway ${gatewayBaseUrl}${path} [protocol=${isOpcUa ? 'OPC UA' : 'MQTT'}, gwRequest=${gwRequestName}]`);
 
             // call gateway
-            int timeoutSec = request.timeout != null ? (int) request.timeout : 30
-            RestClient rc = new RestClient()
-                .method(RestClient.POST)
-                .uri(gatewayBaseUrl + path)
-                .contentType("application/json")
-                .acceptContentType("application/json")
-                .timeout(timeoutSec)
-            if (apiKey) rc.addHeader("X-API-Key", apiKey)
+            let targetUrl = `${gatewayBaseUrl}${path}`;
+            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
+            ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                .parameters({ url: targetUrl }).call();
 
-            RestClient.RestResponse resp = rc.call()
-            resp.checkError()
-
-            ec.logger.info("Gateway dispatch completed for ${gwRequestName}: ${resp.text()}")
+            ec.logger.info(`Gateway dispatch completed for ${gwRequestName}`);
         ]]></script></actions>
     </service>
 
@@ -191,65 +190,67 @@ along with this software (see the LICENSE.md file). If not, see
             </parameter>
         </in-parameters>
         <actions><script><![CDATA[
-            import org.moqui.util.RestClient
-
-            def dr = ec.entity.find("moqui.device.DeviceRequest")
-                .condition("requestName", requestName).one()
+            const dr = ec.entity.find("moqui.device.DeviceRequest")
+                .condition("requestName", requestName).one();
             if (!dr) {
-                ec.message.addError("DeviceRequest ${requestName} not found.")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} not found.`);
+                return;
             }
 
-            String rawUri = dr.brokerUri
+            const rawUri = dr.brokerUri;
             if (!rawUri) {
-                ec.message.addError("DeviceRequest ${requestName} is missing brokerUri (gateway REST base URL).")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} is missing brokerUri (gateway REST base URL).`);
+                return;
             }
-            String gatewayBaseUrl = rawUri
-            String apiKey = null
-            int qIdx = rawUri.indexOf('?')
+            let gatewayBaseUrl = rawUri;
+            let apiKey = null;
+            const qIdx = rawUri.indexOf('?');
             if (qIdx >= 0) {
-                gatewayBaseUrl = rawUri.substring(0, qIdx)
-                rawUri.substring(qIdx + 1).split('&').each { String kv ->
-                    String[] parts = kv.split('=', 2)
-                    if (parts.length == 2 && 'apiKey' == parts[0].trim()) apiKey = parts[1].trim()
+                gatewayBaseUrl = rawUri.substring(0, qIdx);
+                const queryParams = rawUri.substring(qIdx + 1).split('&');
+                for (const kv of queryParams) {
+                    const parts = kv.split('=', 2);
+                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
                 }
             }
-            gatewayBaseUrl = gatewayBaseUrl.replaceAll('/+$', '')
+            gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
 
-            int timeoutSec = dr.timeout != null ? (int) dr.timeout : 30
-            RestClient rc = new RestClient()
-                .method(RestClient.POST)
-                .uri(gatewayBaseUrl + "/api/device-config/export")
-                .contentType("application/json")
-                .acceptContentType("application/json")
-                .timeout(timeoutSec)
-            if (apiKey) rc.addHeader("X-API-Key", apiKey)
+            const payload = { deviceRuleSetId: deviceRuleSetId };
+            if (deviceId) payload.deviceId = deviceId;
+            if (deviceRuleId) payload.deviceRuleId = deviceRuleId;
 
-            Map<String, Object> payload = [deviceRuleSetId: deviceRuleSetId]
-            if (deviceId) payload.deviceId = deviceId
-            if (deviceRuleId) payload.deviceRuleId = deviceRuleId
-            rc.jsonObject(payload)
+            let targetUrl = `${gatewayBaseUrl}/api/device-config/export`;
+            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
 
-            RestClient.RestResponse resp = rc.call()
-            resp.checkError()
+            let responseMap = {};
+            try {
+                responseMap = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                    .parameters(Object.assign({ url: targetUrl }, payload)).call();
+            } catch (e) {
+                ec.logger.error(`Error exporting device config: ${e}`);
+            }
 
-            def responseMap = [:]
-            try { responseMap = (Map) resp.jsonObject() } catch (Throwable ignored) { }
+            const files = responseMap?.files;
+            let totalRows = 0;
+            if (Array.isArray(files)) {
+                for (const f of files) {
+                    totalRows += (f.rowCount || 0);
+                }
+            }
 
             ec.service.sync().name("moqui.device.DeviceServices.receive#GatewayRequestCallback")
-                .parameters([
+                .parameters({
                     eventType: "exportCompleted",
                     requestName: requestName,
                     status: "completed",
                     protocol: "Gateway Export",
                     routeId: "run-device-config-export",
-                    rowCount: (responseMap?.files instanceof List ? responseMap.files.collect { it.rowCount ?: 0 }.sum() : null),
-                    message: "Device configuration export completed for rule set ${deviceRuleSetId}."
-                ])
-                .disableAuthz().call()
+                    rowCount: totalRows,
+                    message: `Device configuration export completed for rule set ${deviceRuleSetId}.`
+                })
+                .disableAuthz().call();
 
-            ec.logger.info("DeviceConfig export completed for ruleSet ${deviceRuleSetId}: ${resp.text()}")
+            ec.logger.info(`DeviceConfig export completed for ruleSet ${deviceRuleSetId}`);
         ]]></script></actions>
     </service>
 
@@ -284,76 +285,87 @@ along with this software (see the LICENSE.md file). If not, see
             </parameter>
         </in-parameters>
         <actions><script><![CDATA[
-            import org.moqui.util.RestClient
-
             // load DeviceContent
-            def content = ec.entity.find("moqui.device.DeviceContent")
-                .condition("deviceContentId", deviceContentId).one()
+            const content = ec.entity.find("moqui.device.DeviceContent")
+                .condition("deviceContentId", deviceContentId).one();
             if (!content) {
-                ec.message.addError("DeviceContent ${deviceContentId} not found.")
-                return
+                ec.message.addError(`DeviceContent ${deviceContentId} not found.`);
+                return;
             }
             if (!content.contentLocation) {
-                ec.message.addError("DeviceContent ${deviceContentId} has no contentLocation.")
-                return
+                ec.message.addError(`DeviceContent ${deviceContentId} has no contentLocation.`);
+                return;
             }
 
             // load Moqui-side DeviceRequest
-            def dr = ec.entity.find("moqui.device.DeviceRequest")
-                .condition("requestName", requestName).one()
+            const dr = ec.entity.find("moqui.device.DeviceRequest")
+                .condition("requestName", requestName).one();
             if (!dr) {
-                ec.message.addError("DeviceRequest ${requestName} not found.")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} not found.`);
+                return;
             }
 
             // parse gateway base URL and optional API key from brokerUri
-            String rawUri = dr.brokerUri
+            const rawUri = dr.brokerUri;
             if (!rawUri) {
-                ec.message.addError("DeviceRequest ${requestName} is missing brokerUri (gateway REST base URL).")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} is missing brokerUri (gateway REST base URL).`);
+                return;
             }
-            String gatewayBaseUrl = rawUri
-            String apiKey = null
-            int qIdx = rawUri.indexOf('?')
+            let gatewayBaseUrl = rawUri;
+            let apiKey = null;
+            const qIdx = rawUri.indexOf('?');
             if (qIdx >= 0) {
-                gatewayBaseUrl = rawUri.substring(0, qIdx)
-                rawUri.substring(qIdx + 1).split('&').each { String kv ->
-                    String[] parts = kv.split('=', 2)
-                    if (parts.length == 2 && 'apiKey' == parts[0].trim()) apiKey = parts[1].trim()
+                gatewayBaseUrl = rawUri.substring(0, qIdx);
+                const queryParams = rawUri.substring(qIdx + 1).split('&');
+                for (const kv of queryParams) {
+                    const parts = kv.split('=', 2);
+                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
                 }
             }
-            gatewayBaseUrl = gatewayBaseUrl.replaceAll('/+$', '')
+            gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
 
-            String gwRequestName = dr.query
+            const gwRequestName = dr.query;
             if (!gwRequestName) {
-                ec.message.addError("DeviceRequest ${requestName} is missing query (gateway-side requestName).")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} is missing query (gateway-side requestName).`);
+                return;
             }
 
-            // read file bytes via Moqui resource system and encode as Base64
-            InputStream is = ec.resource.getLocationReference(content.contentLocation).openStream()
-            byte[] fileBytes = is.bytes
-            is.close()
-            String encoded = java.util.Base64.encoder.encodeToString(fileBytes)
-            String filename = content.contentLocation.tokenize('/').last()
+            // read file bytes via Moqui resource system
+            const rr = ec.resource.getLocationReference(content.contentLocation);
+            const stream = rr.openStream();
+            let fileBytes;
+            try {
+                fileBytes = stream.readAllBytes ? stream.readAllBytes() : stream.bytes;
+            } finally {
+                if (stream && stream.close) stream.close();
+            }
 
-            ec.logger.info("Transferring DeviceContent ${deviceContentId} (${filename}, ${fileBytes.length} bytes) " +
-                "to gateway ${gatewayBaseUrl} → gwRequest=${gwRequestName}")
+            let encoded = "";
+            if (typeof ec.resource.encodeBase64 === 'function') {
+                encoded = ec.resource.encodeBase64(fileBytes);
+            } else if (typeof btoa === 'function') {
+                encoded = btoa(fileBytes);
+            } else if (typeof StringUtilities !== 'undefined' && StringUtilities.base64UrlEncode) {
+                encoded = StringUtilities.base64UrlEncode(fileBytes);
+            }
 
-            int timeoutSec = dr.timeout != null ? (int) dr.timeout : 30
-            RestClient rc = new RestClient()
-                .method(RestClient.POST)
-                .uri(gatewayBaseUrl + "/api/device-content/transfer/" + gwRequestName)
-                .contentType("application/json")
-                .acceptContentType("application/json")
-                .timeout(timeoutSec)
-            if (apiKey) rc.addHeader("X-API-Key", apiKey)
-            rc.jsonObject([filename: filename, contentBase64: encoded, contentTypeEnumId: (content.contentTypeEnumId ?: '')])
+            const pathTokens = content.contentLocation.split('/');
+            const filename = pathTokens[pathTokens.length - 1];
 
-            RestClient.RestResponse resp = rc.call()
-            resp.checkError()
+            ec.logger.info(`Transferring DeviceContent ${deviceContentId} (${filename}) to gateway ${gatewayBaseUrl} -> gwRequest=${gwRequestName}`);
 
-            ec.logger.info("DeviceContent transfer completed: ${resp.text()}")
+            let targetUrl = `${gatewayBaseUrl}/api/device-content/transfer/${gwRequestName}`;
+            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
+
+            ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                .parameters({
+                    url: targetUrl,
+                    filename: filename,
+                    contentBase64: encoded,
+                    contentTypeEnumId: (content.contentTypeEnumId || '')
+                }).call();
+
+            ec.logger.info(`DeviceContent transfer completed for ${gwRequestName}`);
         ]]></script></actions>
     </service>
 
@@ -403,88 +415,79 @@ along with this software (see the LICENSE.md file). If not, see
             </parameter>
         </in-parameters>
         <actions><script><![CDATA[
-            import org.moqui.util.RestClient
-
-            EntityValue dr = ec.entity.find("moqui.device.DeviceRequest")
-                .condition("requestName", requestName).one()
+            const dr = ec.entity.find("moqui.device.DeviceRequest")
+                .condition("requestName", requestName).one();
             if (!dr) {
-                ec.message.addError("DeviceRequest ${requestName} not found.")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} not found.`);
+                return;
             }
 
-            String rawUri = dr.brokerUri
+            const rawUri = dr.brokerUri;
             if (!rawUri) {
-                ec.message.addError("DeviceRequest ${requestName} is missing brokerUri (gateway REST base URL).")
-                return
+                ec.message.addError(`DeviceRequest ${requestName} is missing brokerUri (gateway REST base URL).`);
+                return;
             }
-            String gatewayBaseUrl = rawUri
-            String apiKey = null
-            int qIdx = rawUri.indexOf('?')
+            let gatewayBaseUrl = rawUri;
+            let apiKey = null;
+            const qIdx = rawUri.indexOf('?');
             if (qIdx >= 0) {
-                gatewayBaseUrl = rawUri.substring(0, qIdx)
-                rawUri.substring(qIdx + 1).split('&').each { String kv ->
-                    String[] parts = kv.split('=', 2)
-                    if (parts.length == 2 && 'apiKey' == parts[0].trim()) apiKey = parts[1].trim()
+                gatewayBaseUrl = rawUri.substring(0, qIdx);
+                const queryParams = rawUri.substring(qIdx + 1).split('&');
+                for (const kv of queryParams) {
+                    const parts = kv.split('=', 2);
+                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
                 }
             }
-            gatewayBaseUrl = gatewayBaseUrl.replaceAll('/+$', '')
+            gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
 
-            String mqttTopic = dr.query ?: ''
+            const mqttTopic = dr.query || '';
 
             // load waypoints in sequenceNum order
-            EntityList samples = ec.entity.find("moqui.math.ApproximatedFunctionSample")
+            const samples = ec.entity.find("moqui.math.ApproximatedFunctionSample")
                 .condition("approximatedFunctionId", approximatedFunctionId)
-                .orderBy("sequenceNum").list()
-            if (!samples) {
-                ec.message.addError("No ApproximatedFunctionSample found for approximatedFunctionId ${approximatedFunctionId}.")
-                return
+                .orderBy("sequenceNum").list();
+            if (!samples || samples.length === 0) {
+                ec.message.addError(`No ApproximatedFunctionSample found for approximatedFunctionId ${approximatedFunctionId}.`);
+                return;
             }
 
-            EntityValue approxFunc = ec.entity.find("moqui.math.ApproximatedFunction")
-                .condition("approximatedFunctionId", approximatedFunctionId).one()
-            String vectorSpaceEnumId = approxFunc?.vectorSpaceEnumId ?: ''
-            List<String> axisNames = vectorSpaceEnumId == 'EngTcpPose6Dof' ?
+            const approxFunc = ec.entity.find("moqui.math.ApproximatedFunction")
+                .condition("approximatedFunctionId", approximatedFunctionId).one();
+            const vectorSpaceEnumId = approxFunc?.vectorSpaceEnumId || '';
+            const axisNames = (vectorSpaceEnumId === 'EngTcpPose6Dof') ?
                 ['X', 'Y', 'Z', 'A', 'B', 'C'] :
-                ['J1', 'J2', 'J3', 'J4', 'J5', 'J6']
+                ['J1', 'J2', 'J3', 'J4', 'J5', 'J6'];
 
             // build per-axis arrays according to the trajectory vector space
-            Map<String, List<Double>> axes = [:]
-            for (def sample in samples) {
-                def components = ec.entity.find("moqui.math.VectorComponent")
+            const axes = {};
+            for (const sample of samples) {
+                const components = ec.entity.find("moqui.math.VectorComponent")
                     .condition("vectorId", sample.sampleVectorId)
-                    .orderBy("dimensionIndex").list()
-                for (def comp in components) {
-                    int dim = comp.dimensionIndex as int
-                    String axisKey = dim < axisNames.size() ? axisNames[dim] : "D${dim}"
-                    if (!axes.containsKey(axisKey)) axes[axisKey] = []
-                    axes[axisKey] << (comp.realValue as double)
+                    .orderBy("dimensionIndex").list();
+                for (const comp of (components || [])) {
+                    const dim = parseInt(comp.dimensionIndex, 10);
+                    const axisKey = (dim < axisNames.length) ? axisNames[dim] : `D${dim}`;
+                    if (!axes[axisKey]) axes[axisKey] = [];
+                    axes[axisKey].push(Number(comp.realValue));
                 }
             }
 
-            Map<String, Object> payload = [
+            const payload = {
                 approximatedFunctionId: approximatedFunctionId,
-                waypointCount : samples.size(),
-                mqttTopic : mqttTopic,
-                axes : axes
-            ]
+                waypointCount: samples.length,
+                mqttTopic: mqttTopic,
+                axes: axes
+            };
 
-            ec.logger.info("Exporting trajectory ${approximatedFunctionId} " +
-                "(${samples.size()} waypoints, ${axes.size()} axes) to gateway ${gatewayBaseUrl}, topic=${mqttTopic}")
+            ec.logger.info(`Exporting trajectory ${approximatedFunctionId} (${samples.length} waypoints, ${Object.keys(axes).length} axes) to gateway ${gatewayBaseUrl}, topic=${mqttTopic}`);
 
-            int timeoutSec = dr.timeout != null ? (int) dr.timeout : 30
-            RestClient rc = new RestClient()
-                .method(RestClient.POST)
-                .uri(gatewayBaseUrl + "/api/trajectory/export")
-                .contentType("application/json")
-                .acceptContentType("application/json")
-                .timeout(timeoutSec)
-            if (apiKey) rc.addHeader("X-API-Key", apiKey)
-            rc.jsonObject(payload)
+            let targetUrl = `${gatewayBaseUrl}/api/trajectory/export`;
+            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
 
-            RestClient.RestResponse resp = rc.call()
-            resp.checkError()
+            ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                .parameters(Object.assign({ url: targetUrl }, payload)).call();
 
-            ec.logger.info("Trajectory export completed for ${approximatedFunctionId}: ${resp.text()}")
+            ec.logger.info(`Trajectory export completed for ${approximatedFunctionId}`);
         ]]></script></actions>
     </service>
 
@@ -524,16 +527,14 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="errorDurationSeconds" type="Long"/>
         </in-parameters>
         <actions><script><![CDATA[
-            if (eventType == 'inboundError') {
-                ec.logger.warn("Gateway inbound error on route ${routeId} (${protocol}): " +
-                    "${errorMessage}. First error: ${firstErrorTime}, duration: ${errorDurationSeconds}s")
+            if (eventType === 'inboundError') {
+                ec.logger.warn(`Gateway inbound error on route ${routeId} (${protocol}): ${errorMessage}. First error: ${firstErrorTime}, duration: ${errorDurationSeconds}s`);
                 // TODO: raise a DeviceAlert or other notification
-            } else if (eventType == 'inboundRecovered') {
-                ec.logger.info("Gateway inbound recovered on route ${routeId}: " +
-                    "error duration was ${errorDurationSeconds}s since ${firstErrorTime}")
+            } else if (eventType === 'inboundRecovered') {
+                ec.logger.info(`Gateway inbound recovered on route ${routeId}: error duration was ${errorDurationSeconds}s since ${firstErrorTime}`);
                 // TODO: clear DeviceAlert or other notification
             } else {
-                ec.logger.warn("Unknown gateway notification eventType: ${eventType}")
+                ec.logger.warn(`Unknown gateway notification eventType: ${eventType}`);
             }
         ]]></script></actions>
     </service>

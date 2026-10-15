@@ -30,18 +30,16 @@ along with this software (see the LICENSE.md file). If not, see
             <entity-find-one entity-name="moqui.device.DeviceDetail" value-field="device"/>
             <if condition="device == null"><return error="true" message="Device with ID ${deviceId} not found. Notification not sent."/></if>
             <script><![CDATA[
-                import org.moqui.context.NotificationMessage
-                import org.moqui.impl.context.NotificationMessageImpl
+                const msgMap = {
+                    typeString: notificationType,
+                    device: { deviceId: device.deviceId, deviceName: device.deviceName },
+                    message: message
+                };
 
-                Map msgMap = new HashMap<>()
-                msgMap.put("typeString", notificationType)
-                msgMap.put("device", [deviceId:device.deviceId, deviceName:device.deviceName])
-                msgMap.put("message", message)
-
-                NotificationMessage nm = ec.makeNotificationMessage().topic(notificationTopic).title(notificationTitle?:"")
-                nm.message(msgMap)
-                nm.type(notificationType)
-                nm.showAlert(true).persistOnSend(true).send()
+                const nm = ec.makeNotificationMessage().topic(notificationTopic).title(notificationTitle || "");
+                nm.message(msgMap);
+                nm.type(notificationType);
+                nm.showAlert(true).persistOnSend(true).send();
             ]]></script>
         </actions>
     </service>
@@ -79,32 +77,32 @@ along with this software (see the LICENSE.md file). If not, see
 
             <set field="notificationTopic" value="DeviceGatewayRequest"/>
             <set field="notificationType" value="info"/>
-            <set field="notificationTitle" from="'Gateway callback for ' + (device.deviceName ?: device.deviceId)"/>
-            <set field="notificationMessage" from="message ?: ('Gateway event ' + eventType + ' completed for request ' + requestName + '.')"/>
+            <set field="notificationTitle" from="'Gateway callback for ' + (device.deviceName || device.deviceId)"/>
+            <set field="notificationMessage" from="message || ('Gateway event ' + eventType + ' completed for request ' + requestName + '.')"/>
 
-            <if condition="eventType == 'writeCompleted'">
+            <if condition="eventType === 'writeCompleted'">
                 <set field="notificationType" value="success"/>
-                <set field="notificationTitle" from="'Sync Parameters completed for ' + (device.deviceName ?: device.deviceId)"/>
+                <set field="notificationTitle" from="'Sync Parameters completed for ' + (device.deviceName || device.deviceId)"/>
                 <set field="notificationMessage"
-                        from="message ?: ('Synchronized ' + (rowCount ?: 0) + ' parameter value(s) to device ' + (device.deviceName ?: device.deviceId) + (protocol ? ' via ' + protocol : '') + '.')"/>
+                        from="message || ('Synchronized ' + (rowCount || 0) + ' parameter value(s) to device ' + (device.deviceName || device.deviceId) + (protocol ? ' via ' + protocol : '') + '.')"/>
             </if>
-            <if condition="eventType == 'exportCompleted'">
+            <if condition="eventType === 'exportCompleted'">
                 <set field="notificationType" value="success"/>
-                <set field="notificationTitle" from="'Download Process completed for ' + (device.deviceName ?: device.deviceId)"/>
+                <set field="notificationTitle" from="'Download Process completed for ' + (device.deviceName || device.deviceId)"/>
                 <set field="notificationMessage"
-                        from="message ?: ('Device configuration export completed for device ' + (device.deviceName ?: device.deviceId) + '.')"/>
+                        from="message || ('Device configuration export completed for device ' + (device.deviceName || device.deviceId) + '.')"/>
             </if>
-            <if condition="eventType == 'writeFailed' || status == 'error'">
+            <if condition="eventType === 'writeFailed' || status === 'error'">
                 <set field="notificationType" value="danger"/>
-                <set field="notificationTitle" from="'Gateway request failed for ' + (device.deviceName ?: device.deviceId)"/>
+                <set field="notificationTitle" from="'Gateway request failed for ' + (device.deviceName || device.deviceId)"/>
                 <set field="notificationMessage"
-                        from="message ?: ('Gateway request ' + requestName + ' failed for device ' + (device.deviceName ?: device.deviceId) + (protocol ? ' via ' + protocol : '') + '.')"/>
+                        from="message || ('Gateway request ' + requestName + ' failed for device ' + (device.deviceName || device.deviceId) + (protocol ? ' via ' + protocol : '') + '.')"/>
             </if>
 
             <service-call name="moqui.device.DeviceServices.send#DeviceNotification"
-                    in-map="[deviceId:device.deviceId, notificationTopic:notificationTopic,
+                    in-map="{deviceId:device.deviceId, notificationTopic:notificationTopic,
                             notificationType:notificationType, notificationTitle:notificationTitle,
-                            message:notificationMessage]"/>
+                            message:notificationMessage}"/>
             <log level="info" message="Processed gateway request callback ${eventType} for request ${requestName}, device ${device.deviceId}."/>
         </actions>
     </service>
@@ -139,152 +137,151 @@ along with this software (see the LICENSE.md file). If not, see
         </out-parameters>
         <actions>
             <script><![CDATA[
-                import org.moqui.entity.EntityList
-                import org.moqui.entity.EntityValue
-
-                EntityValue deviceConfig = ec.entity.find("moqui.device.DeviceConfig")
-                        .condition("deviceConfigId", deviceConfigId)
-                        .useCache(true)
-                        .one()
+                const deviceConfig = ec.entity.find("moqui.device.DeviceConfig")
+                    .condition("deviceConfigId", deviceConfigId)
+                    .useCache(true)
+                    .one();
                 if (!deviceConfig) {
-                    ec.message.addError("DeviceConfig not found for deviceConfigId [${deviceConfigId}].")
-                    return
+                    ec.message.addError(`DeviceConfig not found for deviceConfigId [${deviceConfigId}].`);
+                    return;
                 }
 
-                EntityValue device = ec.entity.find("moqui.device.Device")
-                        .condition("deviceId", deviceId)
-                        .useCache(false)
-                        .one()
+                const device = ec.entity.find("moqui.device.Device")
+                    .condition("deviceId", deviceId)
+                    .useCache(false)
+                    .one();
                 if (!device) {
-                    ec.message.addError("Device not found for deviceId [${deviceId}].")
-                    return
+                    ec.message.addError(`Device not found for deviceId [${deviceId}].`);
+                    return;
                 }
 
                 if (validateDeviceType && deviceConfig.deviceTypeEnumId) {
-                    Map enumResult = ec.service.sync().name("org.moqui.impl.BasicServices.find#EnumerationByParent")
-                            .parameters([
-                                    parentEnumId : deviceConfig.deviceTypeEnumId,
-                                    includeParent: true,
-                                    includeNested: true,
-                                    orderByField : "description"
-                            ]).call()
+                    const enumResult = ec.service.sync().name("org.moqui.impl.BasicServices.find#EnumerationByParent")
+                        .parameters({
+                            parentEnumId: deviceConfig.deviceTypeEnumId,
+                            includeParent: true,
+                            includeNested: true,
+                            orderByField: "description"
+                        }).call();
 
-                    Set enumIdSet = (Set) enumResult.enumIdSet
-                    if (!enumIdSet?.contains(device.deviceTypeEnumId)) {
-                        ec.message.addError("Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}].")
-                        return
+                    const enumIdSet = enumResult.enumIdSet;
+                    const hasType = Array.isArray(enumIdSet) ? enumIdSet.includes(device.deviceTypeEnumId)
+                        : (enumIdSet && typeof enumIdSet.has === 'function' ? enumIdSet.has(device.deviceTypeEnumId)
+                        : (enumIdSet && typeof enumIdSet.contains === 'function' ? enumIdSet.contains(device.deviceTypeEnumId) : false));
+
+                    if (!hasType) {
+                        ec.message.addError(`Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}].`);
+                        return;
                     }
                 }
 
-                sourceParameterCount = 0
-                targetParameterCount = 0
-                commonParameterCount = 0
-                updatedParameterCount = 0
-                skippedParameterKeySet = new TreeSet()
-                updatedParameterIdList = []
-                updatedDeviceFieldList = []
+                sourceParameterCount = 0;
+                targetParameterCount = 0;
+                commonParameterCount = 0;
+                updatedParameterCount = 0;
+                skippedParameterKeySet = [];
+                updatedParameterIdList = [];
+                updatedDeviceFieldList = [];
 
                 if (copyDeviceFields) {
-                    boolean deviceChanged = false
+                    let deviceChanged = false;
 
-                    if (deviceConfig.controlMethodEnumId && device.controlMethodEnumId != deviceConfig.controlMethodEnumId) {
-                        updatedDeviceFieldList.add("controlMethodEnumId")
+                    if (deviceConfig.controlMethodEnumId && device.controlMethodEnumId !== deviceConfig.controlMethodEnumId) {
+                        updatedDeviceFieldList.push("controlMethodEnumId");
                         if (!dryRun) {
-                            device.controlMethodEnumId = deviceConfig.controlMethodEnumId
-                            deviceChanged = true
+                            device.controlMethodEnumId = deviceConfig.controlMethodEnumId;
+                            deviceChanged = true;
                         }
                     }
 
-                    if (deviceConfig.approximatedFunctionId && device.approximatedFunctionId != deviceConfig.approximatedFunctionId) {
-                        updatedDeviceFieldList.add("approximatedFunctionId")
+                    if (deviceConfig.approximatedFunctionId && device.approximatedFunctionId !== deviceConfig.approximatedFunctionId) {
+                        updatedDeviceFieldList.push("approximatedFunctionId");
                         if (!dryRun) {
-                            device.approximatedFunctionId = deviceConfig.approximatedFunctionId
-                            deviceChanged = true
+                            device.approximatedFunctionId = deviceConfig.approximatedFunctionId;
+                            deviceChanged = true;
                         }
                     }
 
-                    if (deviceChanged && !dryRun) device.update()
+                    if (deviceChanged && !dryRun) device.update();
                 }
 
-                EntityList sourceParameterList = ec.entity.find("moqui.math.Parameter")
-                        .condition("deviceConfigId", deviceConfigId)
-                        .useCache(true)
-                        .list()
+                const sourceParameterList = ec.entity.find("moqui.math.Parameter")
+                    .condition("deviceConfigId", deviceConfigId)
+                    .useCache(true)
+                    .list();
 
-                EntityList targetParameterList = ec.entity.find("moqui.math.Parameter")
-                        .condition("deviceId", deviceId)
-                        .useCache(false)
-                        .list()
+                const targetParameterList = ec.entity.find("moqui.math.Parameter")
+                    .condition("deviceId", deviceId)
+                    .useCache(false)
+                    .list();
 
-                sourceParameterCount = sourceParameterList.size()
-                targetParameterCount = targetParameterList.size()
+                sourceParameterCount = sourceParameterList ? sourceParameterList.length : 0;
+                targetParameterCount = targetParameterList ? targetParameterList.length : 0;
 
-                Closure<String> makeParameterKey = { EntityValue parameter ->
-                    String parameterDefId = parameter.parameterDefId ? parameter.parameterDefId.toString() : ""
-                    String parameterAlias = parameter.parameterAlias ? parameter.parameterAlias.toString() : ""
-                    return parameterDefId + "|" + parameterAlias
+                const makeParameterKey = (param) => {
+                    const parameterDefId = param.parameterDefId ? String(param.parameterDefId) : "";
+                    const parameterAlias = param.parameterAlias ? String(param.parameterAlias) : "";
+                    return `${parameterDefId}|${parameterAlias}`;
+                };
+
+                const sourceByKey = {};
+                const duplicateSourceKeys = [];
+                for (const sourceParam of (sourceParameterList || [])) {
+                    if (!sourceParam.parameterDefId) continue;
+                    const key = makeParameterKey(sourceParam);
+                    if (sourceByKey[key]) duplicateSourceKeys.push(key);
+                    else sourceByKey[key] = sourceParam;
+                }
+                if (duplicateSourceKeys.length > 0) {
+                    ec.message.addError(`DeviceConfig [${deviceConfigId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateSourceKeys.join(', ')}. Cannot apply DeviceConfig safely.`);
+                    return;
                 }
 
-                Map<String, EntityValue> sourceByKey = [:]
-                Set<String> duplicateSourceKeySet = new TreeSet()
-                for (EntityValue sourceParam : sourceParameterList) {
-                    if (!sourceParam.parameterDefId) continue
-                    String key = makeParameterKey(sourceParam)
-                    if (sourceByKey.containsKey(key)) duplicateSourceKeySet.add(key)
-                    else sourceByKey[key] = sourceParam
+                const targetByKey = {};
+                const duplicateTargetKeys = [];
+                for (const targetParam of (targetParameterList || [])) {
+                    if (!targetParam.parameterDefId) continue;
+                    const key = makeParameterKey(targetParam);
+                    if (targetByKey[key]) duplicateTargetKeys.push(key);
+                    else targetByKey[key] = targetParam;
                 }
-                if (!duplicateSourceKeySet.isEmpty()) {
-                    ec.message.addError("DeviceConfig [${deviceConfigId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateSourceKeySet}. Cannot apply DeviceConfig safely.")
-                    return
-                }
-
-                Map<String, EntityValue> targetByKey = [:]
-                Set<String> duplicateTargetKeySet = new TreeSet()
-                for (EntityValue targetParam : targetParameterList) {
-                    if (!targetParam.parameterDefId) continue
-                    String key = makeParameterKey(targetParam)
-                    if (targetByKey.containsKey(key)) duplicateTargetKeySet.add(key)
-                    else targetByKey[key] = targetParam
-                }
-                if (!duplicateTargetKeySet.isEmpty()) {
-                    ec.message.addError("Device [${deviceId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateTargetKeySet}. Cannot apply DeviceConfig safely.")
-                    return
+                if (duplicateTargetKeys.length > 0) {
+                    ec.message.addError(`Device [${deviceId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateTargetKeys.join(', ')}. Cannot apply DeviceConfig safely.`);
+                    return;
                 }
 
-                for (Map.Entry<String, EntityValue> sourceEntry : sourceByKey.entrySet()) {
-                    String key = sourceEntry.key
-                    EntityValue sourceParam = sourceEntry.value
-                    EntityValue targetParam = targetByKey[key]
+                for (const [key, sourceParam] of Object.entries(sourceByKey)) {
+                    const targetParam = targetByKey[key];
 
                     if (!targetParam) {
-                        skippedParameterKeySet.add(key)
-                        continue
+                        skippedParameterKeySet.push(key);
+                        continue;
                     }
 
-                    commonParameterCount++
-                    boolean parameterChanged = false
+                    commonParameterCount++;
+                    let parameterChanged = false;
 
-                    if (targetParam.numericValue != sourceParam.numericValue) {
-                        parameterChanged = true
-                        if (!dryRun) targetParam.numericValue = sourceParam.numericValue
+                    if (targetParam.numericValue !== sourceParam.numericValue) {
+                        parameterChanged = true;
+                        if (!dryRun) targetParam.numericValue = sourceParam.numericValue;
                     }
-                    if (targetParam.symbolicValue != sourceParam.symbolicValue) {
-                        parameterChanged = true
-                        if (!dryRun) targetParam.symbolicValue = sourceParam.symbolicValue
+                    if (targetParam.symbolicValue !== sourceParam.symbolicValue) {
+                        parameterChanged = true;
+                        if (!dryRun) targetParam.symbolicValue = sourceParam.symbolicValue;
                     }
-                    if (targetParam.parameterEnumId != sourceParam.parameterEnumId) {
-                        parameterChanged = true
-                        if (!dryRun) targetParam.parameterEnumId = sourceParam.parameterEnumId
+                    if (targetParam.parameterEnumId !== sourceParam.parameterEnumId) {
+                        parameterChanged = true;
+                        if (!dryRun) targetParam.parameterEnumId = sourceParam.parameterEnumId;
                     }
-                    if (copySequenceNum && targetParam.sequenceNum != sourceParam.sequenceNum) {
-                        parameterChanged = true
-                        if (!dryRun) targetParam.sequenceNum = sourceParam.sequenceNum
+                    if (copySequenceNum && targetParam.sequenceNum !== sourceParam.sequenceNum) {
+                        parameterChanged = true;
+                        if (!dryRun) targetParam.sequenceNum = sourceParam.sequenceNum;
                     }
 
                     if (parameterChanged) {
-                        updatedParameterCount++
-                        updatedParameterIdList.add(targetParam.parameterId)
-                        if (!dryRun) targetParam.update()
+                        updatedParameterCount++;
+                        updatedParameterIdList.push(targetParam.parameterId);
+                        if (!dryRun) targetParam.update();
                     }
                 }
             ]]></script>
@@ -308,7 +305,7 @@ along with this software (see the LICENSE.md file). If not, see
             </entity-find>
             <iterate list="requestList" entry="request">
                 <log level="info" message="Run device request with name ${request.requestName} in the group ${request.requestGroup}."/>
-                <service-call name="moqui.device.DeviceServices.run#DeviceRequest" in-map="[requestName:request.requestName]"
+                <service-call name="moqui.device.DeviceServices.run#DeviceRequest" in-map="{requestName:request.requestName}"
                     async="${distribute ? 'distribute' : (async ? 'true' : 'false')}"
                     ignore-error="true" transaction="ignore"/>
             </iterate>
@@ -355,8 +352,8 @@ along with this software (see the LICENSE.md file). If not, see
 
             <!-- Filter write requests to send only changed parameters.
                  This filtering only makes sense for items not in a bulk request. -->
-            <if condition="'DrtWrite' == request.requestTypeEnumId &amp;&amp; 'Y' == request.onlyChangedParameters">
-                <set field="parameterIdSet" from="requestItemList*.parameterId"/>
+            <if condition="'DrtWrite' === request.requestTypeEnumId &amp;&amp; 'Y' === request.onlyChangedParameters">
+                <set field="parameterIdSet" from="(requestItemList || []).map(it => it.parameterId)"/>
                 <entity-find entity-name="moqui.entity.EntityAuditLog" list="changedRows" distinct="true" cache="false">
                     <econdition field-name="changedEntityName" value="moqui.math.Parameter"/>
                     <econdition field-name="pkPrimaryValue" operator="in" from="parameterIdSet"/>
@@ -364,17 +361,17 @@ along with this software (see the LICENSE.md file). If not, see
                     <order-by field-name="parameterId"/>
                     <select-field field-name="pkPrimaryValue"/>
                 </entity-find>
-                <set field="changedIds" from="changedRows*.pkPrimaryValue"/>
-                <set field="requestItemList" from="requestItemList.findAll { it.parameterId in changedIds }"/>
+                <set field="changedIds" from="(changedRows || []).map(it => it.pkPrimaryValue)"/>
+                <set field="requestItemList" from="(requestItemList || []).filter(it => changedIds.includes(it.parameterId))"/>
             </if>
             <if condition="!bulkRequestItemList &amp;&amp; !requestItemList &amp;&amp; !request.query">
                 <return message="The device request with name ${requestName} has no items to process."/>
             </if>
             <log level="info" message="Running device request with name ${request.requestName}."/>
             <!-- Call the configured service. -->
-            <service-call name="${request.runServiceName}" in-map="[device:device, request:request,
+            <service-call name="${request.runServiceName}" in-map="{device:device, request:request,
                 connection:connection,
-                bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList]"
+                bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList}"
                 out-map="context" disable-authz="true" transaction="ignore"/>
         </actions>
     </service>
@@ -440,7 +437,7 @@ along with this software (see the LICENSE.md file). If not, see
             <if condition="contentFile != null &amp;&amp; contentFile.size &gt; 0">
                 <entity-find-one entity-name="moqui.device.DeviceContent" value-field="deviceContent"/>
                 <service-call name="moqui.device.DeviceServices.save#DeviceContentFile" out-map="context"
-                        in-map="context + [deviceId:deviceContent.deviceId, saveContentLocation:false]"/>
+                        in-map="Object.assign({}, context, {deviceId:deviceContent.deviceId, saveContentLocation:false})"/>
             </if>
             <service-call name="update#moqui.device.DeviceContent" in-map="context"/>
         </actions>
@@ -456,20 +453,20 @@ along with this software (see the LICENSE.md file). If not, see
         <actions>
             <set field="filename" from="contentFile.getName()"/>
             <if condition="org.moqui.resource.ResourceReference.isTextFilename(filename)"><then>
-                <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') ?: 'dbresource://mantle/content'"/>
+                <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') || 'dbresource://mantle/content'"/>
             </then><else>
-                <set field="contentRoot" from="ec.user.getPreference('mantle.content.large.root') ?: 'dbresource://mantle/content'"/>
+                <set field="contentRoot" from="ec.user.getPreference('mantle.content.large.root') || 'dbresource://mantle/content'"/>
             </else></if>
             <set field="contentLocation" value="${contentRoot}/device/${deviceId}/content_${deviceContentId}/${filename}"/>
 
             <set field="docRr" from="ec.resource.getLocationReference(contentLocation)"/>
-            <script>
-                fileStream = contentFile.getInputStream()
-                try { docRr.putStream(fileStream) } finally { fileStream.close() }
-            </script>
+            <script><![CDATA[
+                fileStream = contentFile.getInputStream();
+                try { docRr.putStream(fileStream); } finally { fileStream.close(); }
+            ]]></script>
 
             <if condition="saveContentLocation"><service-call name="update#moqui.device.DeviceContent"
-                    in-map="[deviceContentId:deviceContentId, contentLocation:contentLocation]"/></if>
+                    in-map="{deviceContentId:deviceContentId, contentLocation:contentLocation}"/></if>
         </actions>
     </service>
 </services>

@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+-->
+<entity-facade-xml type="seed">
+
+    <!-- The following DeviceType and DeviceGroupMemberPurpose values are prerequisites
+         intentionally defined in DeviceData.xml and are not duplicated here:
+         DgtSUC, DgtSecurityZone, DgtSecurityConduit, DtCommunicationChannel,
+         DgmpSecurityZone, DgmpSecurityConduit, DgmpZoneAsset,
+         DgmpCommunicationChannel and DgmpConduitDevice. -->
+
+    <!-- ========================================================= -->
+    <!-- Diagram source content                                    -->
+    <!-- Product drawings remain ProductContent. These types are   -->
+    <!-- for as-built/as-operated content attached to a Device.    -->
+    <!-- ========================================================= -->
+
+    <moqui.basic.Enumeration description="System Architecture Diagram" enumId="DCntSystemArchitecture"
+            parentEnumId="DCntSpecification" enumTypeId="DeviceContentType"/>
+    <moqui.basic.Enumeration description="Network Diagram" enumId="DCntNetworkDiagram"
+            parentEnumId="DCntSystemArchitecture" enumTypeId="DeviceContentType"/>
+    <moqui.basic.Enumeration description="Electrical Diagram" enumId="DCntElectricalDiagram"
+            parentEnumId="DCntSpecification" enumTypeId="DeviceContentType"/>
+    <moqui.basic.Enumeration description="Piping and Instrumentation Diagram" enumId="DCntPidDiagram"
+            parentEnumId="DCntSpecification" enumTypeId="DeviceContentType"/>
+    <moqui.basic.Enumeration description="EPLAN Project or Export" enumId="DCntEplanProject"
+            parentEnumId="DCntElectricalDiagram" enumTypeId="DeviceContentType"/>
+    <moqui.basic.Enumeration description="AutoCAD DWG File" enumId="DCntDwgFile"
+            parentEnumId="DCntCadFile" enumTypeId="DeviceContentType"/>
+    <moqui.basic.Enumeration description="AutoCAD DXF File" enumId="DCntDxfFile"
+            parentEnumId="DCntCadFile" enumTypeId="DeviceContentType"/>
+
+    <!-- ========================================================= -->
+    <!-- Graph-backed engineering models                           -->
+    <!-- ========================================================= -->
+
+    <moqui.basic.Enumeration description="Graph-Backed Structural Model" enumId="MmtGraphModel"
+            parentEnumId="MmtModelDriven" enumTypeId="MathModelType"/>
+    <moqui.basic.Enumeration description="System Architecture Model" enumId="MmtArchitectureModel"
+            parentEnumId="MmtGraphModel" enumTypeId="MathModelType"/>
+    <moqui.basic.Enumeration description="Network Topology Model" enumId="MmtNetworkTopology"
+            parentEnumId="MmtGraphModel" enumTypeId="MathModelType"/>
+    <moqui.basic.Enumeration description="Electrical Topology Model" enumId="MmtElectricalTopology"
+            parentEnumId="MmtGraphModel" enumTypeId="MathModelType"/>
+    <moqui.basic.Enumeration description="Process and P&amp;ID Topology Model" enumId="MmtProcessTopology"
+            parentEnumId="MmtGraphModel" enumTypeId="MathModelType"/>
+    <moqui.basic.Enumeration description="IEC 62443 Cyber Security Topology Model" enumId="MmtCyberSecurityTopology"
+            parentEnumId="MmtNetworkTopology" enumTypeId="MathModelType"/>
+
+    <moqui.basic.Enumeration description="Engineering Documentation" enumId="MmucDocumentation"
+            enumTypeId="MathModelUsageContext"/>
+    <moqui.basic.Enumeration description="Automation Engineering" enumId="MmdAutomation"
+            parentEnumId="MmdEngineering" enumTypeId="MathModelDomain"/>
+    <moqui.basic.Enumeration description="Electrical Engineering" enumId="MmdElectrical"
+            parentEnumId="MmdEngineering" enumTypeId="MathModelDomain"/>
+    <moqui.basic.Enumeration description="Process Engineering" enumId="MmdProcess"
+            parentEnumId="MmdEngineering" enumTypeId="MathModelDomain"/>
+    <moqui.basic.Enumeration description="Network Engineering" enumId="MmdNetworking"
+            parentEnumId="MmdEngineering" enumTypeId="MathModelDomain"/>
+    <moqui.basic.Enumeration description="OT Cyber Security" enumId="MmdCyberSecurity"
+            parentEnumId="MmdEngineering" enumTypeId="MathModelDomain"/>
+
+    <moqui.basic.Enumeration description="Engineering Definition" enumId="MmbpEngineeringDefinition"
+            enumTypeId="MathModelBindingPurpose"/>
+    <moqui.basic.Enumeration description="As-Designed Engineering Model" enumId="MmbpAsDesigned"
+            parentEnumId="MmbpEngineeringDefinition" enumTypeId="MathModelBindingPurpose"/>
+    <moqui.basic.Enumeration description="As-Built Engineering Model" enumId="MmbpAsBuilt"
+            parentEnumId="MmbpEngineeringDefinition" enumTypeId="MathModelBindingPurpose"/>
+    <moqui.basic.Enumeration description="As-Operated Engineering Model" enumId="MmbpAsOperated"
+            parentEnumId="MmbpEngineeringDefinition" enumTypeId="MathModelBindingPurpose"/>
+    <moqui.basic.Enumeration description="IEC 62443 Cyber Security Topology" enumId="MmbpCyberSecurityTopology"
+            parentEnumId="MmbpAsBuilt" enumTypeId="MathModelBindingPurpose"/>
+
+    <!-- ========================================================= -->
+    <!-- IEC 62443 parameter vocabulary                            -->
+    <!-- ========================================================= -->
+
+    <moqui.basic.Enumeration description="Cyber Security" enumId="PpCyberSecurity"
+            enumTypeId="ParameterPurpose"/>
+    <moqui.basic.Enumeration description="Cyber Security Parameter" enumId="PgCyberSecurity"
+            enumTypeId="ParameterGroup"/>
+
+    <moqui.basic.EnumerationType description="Security Criticality" enumTypeId="SecurityCriticality"/>
+    <moqui.basic.Enumeration description="Low" enumId="SecCritLow" enumTypeId="SecurityCriticality"/>
+    <moqui.basic.Enumeration description="Medium" enumId="SecCritMedium" enumTypeId="SecurityCriticality"/>
+    <moqui.basic.Enumeration description="High" enumId="SecCritHigh" enumTypeId="SecurityCriticality"/>
+    <moqui.basic.Enumeration description="Very High" enumId="SecCritVeryHigh" enumTypeId="SecurityCriticality"/>
+
+    <moqui.basic.EnumerationType description="Communication Channel Direction" enumTypeId="ChannelDirection"/>
+    <moqui.basic.Enumeration description="Bidirectional" enumId="ChDirBidirectional" enumTypeId="ChannelDirection"/>
+    <moqui.basic.Enumeration description="Inbound" enumId="ChDirInbound" enumTypeId="ChannelDirection"/>
+    <moqui.basic.Enumeration description="Outbound" enumId="ChDirOutbound" enumTypeId="ChannelDirection"/>
+
+    <!-- SL-T vector: IEC 62443-3-3 foundational requirements FR 1 through FR 7. -->
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr1" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="1"
+            parameterCode="IEC62443.SLT.FR1" parameterName="SL-T FR 1 Identification and Authentication Control"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 1."/>
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr2" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="2"
+            parameterCode="IEC62443.SLT.FR2" parameterName="SL-T FR 2 Use Control"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 2."/>
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr3" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="3"
+            parameterCode="IEC62443.SLT.FR3" parameterName="SL-T FR 3 System Integrity"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 3."/>
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr4" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="4"
+            parameterCode="IEC62443.SLT.FR4" parameterName="SL-T FR 4 Data Confidentiality"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 4."/>
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr5" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="5"
+            parameterCode="IEC62443.SLT.FR5" parameterName="SL-T FR 5 Restricted Data Flow"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 5."/>
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr6" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="6"
+            parameterCode="IEC62443.SLT.FR6" parameterName="SL-T FR 6 Timely Response to Events"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 6."/>
+    <moqui.math.ParameterDef parameterDefId="SecSlTFr7" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="7"
+            parameterCode="IEC62443.SLT.FR7" parameterName="SL-T FR 7 Resource Availability"
+            minValue="0" maxValue="4" description="Target security level for foundational requirement FR 7."/>
+
+    <moqui.math.ParameterDef parameterDefId="SecCriticality" parameterTypeEnumId="PtEnumeration"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="20"
+            parameterCode="IEC62443.CRITICALITY" parameterName="Security Criticality"
+            description="Criticality classification of a Device, Zone or Conduit."/>
+    <moqui.math.ParameterDef parameterDefId="SecSafetyRelated" parameterTypeEnumId="PtTextIndicator"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="21"
+            parameterCode="IEC62443.SAFETY_RELATED" parameterName="Safety Related"
+            description="Indicates whether the Device, Zone or Conduit is safety related."/>
+    <moqui.math.ParameterDef parameterDefId="SecBusinessValue" parameterTypeEnumId="PtNumberDecimal"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcAuxiliary"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="22"
+            parameterCode="IEC62443.BUSINESS_VALUE" parameterName="Business Value"
+            minValue="0" description="Optional quantitative business value used by the risk assessment."/>
+
+    <moqui.math.ParameterDef parameterDefId="SecChannelProtocol" parameterTypeEnumId="PtTextShort"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="30"
+            parameterCode="IEC62443.CHANNEL.PROTOCOL" parameterName="Communication Protocol"/>
+    <moqui.math.ParameterDef parameterDefId="SecChannelSourcePort" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcAuxiliary"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="31"
+            parameterCode="IEC62443.CHANNEL.SOURCE_PORT" parameterName="Source Port"
+            minValue="0" maxValue="65535"/>
+    <moqui.math.ParameterDef parameterDefId="SecChannelTargetPort" parameterTypeEnumId="PtNumberInteger"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcAuxiliary"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="32"
+            parameterCode="IEC62443.CHANNEL.TARGET_PORT" parameterName="Target Port"
+            minValue="0" maxValue="65535"/>
+    <moqui.math.ParameterDef parameterDefId="SecChannelDirection" parameterTypeEnumId="PtEnumeration"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="Y" hasValue="Y" priority="33"
+            parameterCode="IEC62443.CHANNEL.DIRECTION" parameterName="Channel Direction"/>
+    <moqui.math.ParameterDef parameterDefId="SecChannelEncrypted" parameterTypeEnumId="PtTextIndicator"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="34"
+            parameterCode="IEC62443.CHANNEL.ENCRYPTED" parameterName="Encrypted Channel"/>
+    <moqui.math.ParameterDef parameterDefId="SecChannelAuthenticated" parameterTypeEnumId="PtTextIndicator"
+            purposeEnumId="PpCyberSecurity" groupEnumId="PgCyberSecurity" classEnumId="PcMain"
+            permissionEnumId="PpeReadWrite" isRequired="N" hasValue="Y" priority="35"
+            parameterCode="IEC62443.CHANNEL.AUTHENTICATED" parameterName="Authenticated Channel"/>
+
+</entity-facade-xml>
