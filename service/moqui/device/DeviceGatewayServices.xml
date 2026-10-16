@@ -15,16 +15,30 @@ along with this software (see the LICENSE.md file). If not, see
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
-    <service verb="call" noun="GatewayEndpoint" type="remote-rest" method="post"
-            location="${url}">
-        <description>Direct HTTP POST call to standalone moqui-device-gateway endpoint.</description>
+    <service verb="call" noun="GatewayEndpoint">
+        <description>HTTP JSON POST through the MR-Moqui REST client. Credentials are headers, never URL query parameters.</description>
         <in-parameters>
             <parameter name="url" required="true"/>
+            <parameter name="apiKey"/>
+            <parameter name="payload" type="Map"/>
+            <parameter name="timeout" type="Integer" default-value="30"/>
         </in-parameters>
         <out-parameters>
-            <parameter name="response"/>
+            <parameter name="response" type="Map"/>
             <parameter name="files" type="List"/>
         </out-parameters>
+        <actions><script><![CDATA[
+            const client = ec.service.rest().uri(url).method("POST")
+                .contentType("application/json").jsonObject(payload || {}).timeout(timeout || 30);
+            if (apiKey) client.addHeader("X-API-Key", apiKey);
+            const result = client.call();
+            if (result.statusCode < 200 || result.statusCode >= 300) {
+                ec.message.addError(`Gateway returned HTTP ${result.statusCode}.`);
+                return;
+            }
+            response = result.jsonObject();
+            files = response.files || [];
+        ]]></script></actions>
     </service>
 
     <service verb="run" noun="GatewayDeviceRequest" authenticate="false" transaction="ignore">
@@ -100,8 +114,8 @@ along with this software (see the LICENSE.md file). If not, see
                 gatewayBaseUrl = rawUri.substring(0, qIdx);
                 const queryParams = rawUri.substring(qIdx + 1).split('&');
                 for (const kv of queryParams) {
-                    const parts = kv.split('=', 2);
-                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
+                    const split = kv.indexOf('=');
+                    if (split >= 0 && kv.substring(0, split).trim() === 'apiKey') apiKey = decodeURIComponent(kv.substring(split + 1).replace(/\+/g, ' '));
                 }
             }
             gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
@@ -114,7 +128,7 @@ along with this software (see the LICENSE.md file). If not, see
             }
 
             const reqType = request.requestTypeEnumId;
-            const path = `/api/device-request/run/${gwRequestName}`;
+            const path = `/api/device-request/run/${encodeURIComponent(gwRequestName)}`;
 
             // protocol detection (for logging only)
             const isOpcUa = ('DcdOpcUa' === connection?.driverEnumId);
@@ -122,9 +136,8 @@ along with this software (see the LICENSE.md file). If not, see
 
             // call gateway
             let targetUrl = `${gatewayBaseUrl}${path}`;
-            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
             ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
-                .parameters({ url: targetUrl }).call();
+                .parameters({ url: targetUrl, apiKey: apiKey, timeout: request.timeout || 30 }).call();
 
             ec.logger.info(`Gateway dispatch completed for ${gwRequestName}`);
         ]]></script></actions>
@@ -163,7 +176,7 @@ along with this software (see the LICENSE.md file). If not, see
             loads from the filesystem and interpolates autonomously.  This is the persistent
             trajectory path, as opposed to export#Trajectory which sends ephemeral bulk data
             via MQTT for immediate execution by MqttParameterSub.
-            The same distinction is documented in the moqui-device-gateway Camel route
+            The same distinction is documented in the moqui-device-gateway endpoint
             configuration: /api/device-config/export handles both device config and
             persistent trajectories; /api/trajectory/export handles the ephemeral path.
 
@@ -209,8 +222,8 @@ along with this software (see the LICENSE.md file). If not, see
                 gatewayBaseUrl = rawUri.substring(0, qIdx);
                 const queryParams = rawUri.substring(qIdx + 1).split('&');
                 for (const kv of queryParams) {
-                    const parts = kv.split('=', 2);
-                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
+                    const split = kv.indexOf('=');
+                    if (split >= 0 && kv.substring(0, split).trim() === 'apiKey') apiKey = decodeURIComponent(kv.substring(split + 1).replace(/\+/g, ' '));
                 }
             }
             gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
@@ -220,15 +233,16 @@ along with this software (see the LICENSE.md file). If not, see
             if (deviceRuleId) payload.deviceRuleId = deviceRuleId;
 
             let targetUrl = `${gatewayBaseUrl}/api/device-config/export`;
-            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
 
             let responseMap = {};
             try {
                 responseMap = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
-                    .parameters(Object.assign({ url: targetUrl }, payload)).call();
+                    .parameters({ url: targetUrl, apiKey: apiKey, payload: payload, timeout: dr.timeout || 30 }).call();
             } catch (e) {
-                ec.logger.error(`Error exporting device config: ${e}`);
+                ec.message.addError("Device configuration export failed.");
+                return;
             }
+            if (ec.message.hasError()) return;
 
             const files = responseMap?.files;
             let totalRows = 0;
@@ -270,13 +284,13 @@ along with this software (see the LICENSE.md file). If not, see
 
             Gateway-side DeviceRequest fields:
                 requestTypeEnumId = DrtContentTransfer
-                brokerUri = Camel SFTP or file endpoint
+                brokerUri = SFTP or file endpoint
                     e.g. sftp:operator@cnc1.factory.local:22/programs
                     file:/mnt/cnc-share/programs
 
             The file is read from DeviceContent.contentLocation via the Moqui resource system
             and streamed as Base64 JSON to the gateway, which decodes and transfers it via
-            the Camel SFTP/file component to the destination in its brokerUri.
+            the gateway SFTP/file implementation to the destination in its brokerUri.
         </description>
         <in-parameters>
             <parameter name="deviceContentId" required="true"/>
@@ -318,8 +332,8 @@ along with this software (see the LICENSE.md file). If not, see
                 gatewayBaseUrl = rawUri.substring(0, qIdx);
                 const queryParams = rawUri.substring(qIdx + 1).split('&');
                 for (const kv of queryParams) {
-                    const parts = kv.split('=', 2);
-                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
+                    const split = kv.indexOf('=');
+                    if (split >= 0 && kv.substring(0, split).trim() === 'apiKey') apiKey = decodeURIComponent(kv.substring(split + 1).replace(/\+/g, ' '));
                 }
             }
             gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
@@ -333,6 +347,7 @@ along with this software (see the LICENSE.md file). If not, see
             // read file bytes via Moqui resource system
             const rr = ec.resource.getLocationReference(content.contentLocation);
             const stream = rr.openStream();
+            if (!stream) { ec.message.addError("Device content file does not exist."); return; }
             let fileBytes;
             try {
                 fileBytes = stream.readAllBytes ? stream.readAllBytes() : stream.bytes;
@@ -340,13 +355,14 @@ along with this software (see the LICENSE.md file). If not, see
                 if (stream && stream.close) stream.close();
             }
 
+            // Standard padded base64 of the raw bytes; no UTF-8 conversion of binary files.
+            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
             let encoded = "";
-            if (typeof ec.resource.encodeBase64 === 'function') {
-                encoded = ec.resource.encodeBase64(fileBytes);
-            } else if (typeof btoa === 'function') {
-                encoded = btoa(fileBytes);
-            } else if (typeof globalThis.StringUtilities !== 'undefined' && globalThis.StringUtilities.base64UrlEncode) {
-                encoded = globalThis.StringUtilities.base64UrlEncode(fileBytes);
+            for (let i = 0; i < fileBytes.length; i += 3) {
+                const a = fileBytes[i], b = fileBytes[i + 1] || 0, c = fileBytes[i + 2] || 0;
+                encoded += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b >> 4)]
+                    + (i + 1 < fileBytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : "=")
+                    + (i + 2 < fileBytes.length ? alphabet[c & 63] : "=");
             }
 
             const pathTokens = content.contentLocation.split('/');
@@ -354,15 +370,13 @@ along with this software (see the LICENSE.md file). If not, see
 
             ec.logger.info(`Transferring DeviceContent ${deviceContentId} (${filename}) to gateway ${gatewayBaseUrl} -> gwRequest=${gwRequestName}`);
 
-            let targetUrl = `${gatewayBaseUrl}/api/device-content/transfer/${gwRequestName}`;
-            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
+            let targetUrl = `${gatewayBaseUrl}/api/device-content/transfer/${encodeURIComponent(gwRequestName)}`;
 
             ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
                 .parameters({
-                    url: targetUrl,
-                    filename: filename,
-                    contentBase64: encoded,
-                    contentTypeEnumId: (content.contentTypeEnumId || '')
+                    url: targetUrl, apiKey: apiKey, timeout: dr.timeout || 30,
+                    payload: { filename: filename, contentBase64: encoded,
+                        contentTypeEnumId: (content.contentTypeEnumId || '') }
                 }).call();
 
             ec.logger.info(`DeviceContent transfer completed for ${gwRequestName}`);
@@ -434,8 +448,8 @@ along with this software (see the LICENSE.md file). If not, see
                 gatewayBaseUrl = rawUri.substring(0, qIdx);
                 const queryParams = rawUri.substring(qIdx + 1).split('&');
                 for (const kv of queryParams) {
-                    const parts = kv.split('=', 2);
-                    if (parts.length === 2 && 'apiKey' === parts[0].trim()) apiKey = parts[1].trim();
+                    const split = kv.indexOf('=');
+                    if (split >= 0 && kv.substring(0, split).trim() === 'apiKey') apiKey = decodeURIComponent(kv.substring(split + 1).replace(/\+/g, ' '));
                 }
             }
             gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, '');
@@ -473,6 +487,7 @@ along with this software (see the LICENSE.md file). If not, see
             }
 
             const payload = {
+                requestName: requestName,
                 approximatedFunctionId: approximatedFunctionId,
                 waypointCount: samples.length,
                 mqttTopic: mqttTopic,
@@ -482,10 +497,9 @@ along with this software (see the LICENSE.md file). If not, see
             ec.logger.info(`Exporting trajectory ${approximatedFunctionId} (${samples.length} waypoints, ${Object.keys(axes).length} axes) to gateway ${gatewayBaseUrl}, topic=${mqttTopic}`);
 
             let targetUrl = `${gatewayBaseUrl}/api/trajectory/export`;
-            if (apiKey) targetUrl += `?apiKey=${encodeURIComponent(apiKey)}`;
 
             ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
-                .parameters(Object.assign({ url: targetUrl }, payload)).call();
+                .parameters({ url: targetUrl, apiKey: apiKey, payload: payload, timeout: dr.timeout || 30 }).call();
 
             ec.logger.info(`Trajectory export completed for ${approximatedFunctionId}`);
         ]]></script></actions>

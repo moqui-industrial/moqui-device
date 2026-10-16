@@ -1,5 +1,8 @@
 # Moqui Device
 
+This `mr-moqui` branch targets [MR-Moqui master](https://github.com/moqui/mr-moqui).
+Install `mantle-udm` and `moqui-math` with this component; see [MR-Moqui setup](#mr-moqui-branch).
+
 [![license](http://img.shields.io/badge/license-CC0%201.0%20Universal-blue.svg)](https://github.com/moqui/moqui-device/blob/master/LICENSE.md)
 
 Moqui Device is a Moqui Framework component that provides a **complete, universal
@@ -413,32 +416,22 @@ seed data, and the service interfaces only. Driver implementations that
 communicate with physical devices over fieldbus protocols (Modbus, OPC UA,
 EtherNet/IP, CANopen, etc.) are provided by separate components such as
 **moqui-plc4j** (Apache PLC4X, JVM) or Python libraries (python-opcua, pymodbus,
-python-snap7, etc.) embedded via **moqui-jep**. Control algorithms and ML
-inference services likewise run through moqui-jep using NumPy, SciPy, JAX, or
-python-control.
+python-snap7, etc.) embedded via **moqui-jep** in the Java ecosystem. MR-Moqui uses Rust/JavaScript services
+or external providers for control algorithms and model inference.
 
-## Example service: 6-DOF robot arm trajectory planning
+## Example service: 6-DOF TCP waypoint planning
 
-`moqui-device` ships an end-to-end example that shows how math modelling,
-ML inference, and device binding work together. The service
-`moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner`
-computes a collision-free joint-space trajectory for a 6-DOF robot arm using a
-small feedforward neural network and persists the full output chain into the
-moqui-math entity model.
+`moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` persists
+six-dimensional TCP poses `[X,Y,Z,A,B,C]` in the math model. In this Rust-framework
+branch, `plannerMode=remote` calls an explicit HTTP inference provider configured
+with `inferenceUrl`; `plannerMode=linear-demo` generates ten interpolated poses
+only when requested. Neither mode establishes collision avoidance, kinematic
+feasibility, or physical execution by a PLC.
 
-### Neural network
-
-A three-layer MLP (12 → 128 → 256 → 60) is trained offline on 50 000 synthetic
-quintic-spline trajectories with the script
-`script/train_robot_arm_trajectory_planner.py`. The quintic (degree-5) basis
-enforces zero velocity and acceleration at both endpoints, giving smooth,
-jerk-limited motion. Inference runs at runtime via
-[DJL](https://djl.ai/) 0.31.0 + ONNX Runtime 1.19.0, which are declared as
-Gradle dependencies and placed in `lib/` by the `copyDependencies` task.
-
-Input shape: `float32[1, 12]` — `[q_start(6) ‖ q_goal(6)]` joint angles in
-radians. Output shape: `float32[1, 60]` — 10 waypoints × 6 joints, flat
-row-major.
+The training script and the Gradle/DJL dependencies in this repository describe
+the Java ONNX example. MR-Moqui does not load those JVM libraries. A trained
+model must match the TCP pose contract and run in the configured provider; the
+port never silently substitutes interpolation for inference.
 
 ### Data modelling
 
@@ -451,7 +444,7 @@ MathModelDef ──► MathModel ──► MathModelRun ──► MathModelPerf
                                             │
                          ┌──────────────────┼──────────────────────┐
                          ▼                  ▼                      ▼
-               ApproximatedFunction     Vector (q_start)    Vector (q_goal)
+               ApproximatedFunction     Vector (tcp_start)    Vector (tcp_goal)
                      │
           ┌──────────┼──────────────┐
           ▼          ▼              ▼
@@ -463,7 +456,7 @@ MathModelDef ──► MathModel ──► MathModelRun ──► MathModelPerf
                   (path geometry)             (time offset ms)
                           │
                           ▼
-                    Vector + VectorComponent (×6, joint angles)
+                    Vector + VectorComponent (×6, TCP pose coordinates)
 ```
 
 | Entity | Role |
@@ -472,31 +465,30 @@ MathModelDef ──► MathModel ──► MathModelRun ──► MathModelPerf
 | `MathModel` (`TrjPlannerMlp6DofV1`) | Versioned production instance; governed by `MathModelStatusFlow` |
 | `MathModelDefContent` | Points to the ONNX file via `component://moqui-device/data/ml/trajectory_planner.onnx` |
 | `MathModelRun` | Nontransactional execution record; survives TX rollback; stores input parameters as JSON and output summary |
-| `MathModelPerf` | Performance counters: `totalDurationSec` (end-to-end), `inferenceLatencyMs` (DJL `predict()` only), `throughputSamplesSec` |
-| `MathModelData` | Three rows per run: output `ApproximatedFunction` + input `Vector` for q_start and q_goal |
+| `MathModelPerf` | Performance counters: `totalDurationSec` (end-to-end), `inferenceLatencyMs` (provider call or explicit demo generation), `throughputSamplesSec` |
+| `MathModelData` | Three rows per run: output `ApproximatedFunction` + input `Vector` for startPose and goalPose |
 | `ApproximatedFunction` | The trajectory container; `vectorSpaceEnumId = EngJointSpace6Dof` (6-DOF revolute joint space) |
 | `ParametricPath` | Path-level metadata; `profileEnumId = PppfTrajectoryProfile` |
 | `Trajectory` | Time-tagged motion; `controlMethodEnumId = PtcmNNControl` |
 | `ApproximatedFunctionSample` (×10) | One per waypoint (WP0000–WP0009); start, waypoint, end type |
 | `ParametricPathPoint` (×10) | Path geometry for each sample |
 | `TrajectoryPoint` (×10) | Absolute time offset in milliseconds (uniform 1 s total) |
-| `Vector` + `VectorComponent` | Per-waypoint 6-DOF joint angle vector; plus separate vectors for q_start and q_goal |
+| `Vector` + `VectorComponent` | Per-waypoint 6-DOF TCP pose vector; plus separate vectors for startPose and goalPose |
 
 ### Model lifecycle tracking
 
 The `MathModel` lifecycle is governed by `MathModelStatusFlow`
 (`Draft → Validation → Production → Archived`). Every inference call creates a
-`MathModelRun` record (nontransactional, `use="nontransactional"`) that captures:
+`MathModelRun` record that captures:
 
 - `startTime` / `endDate` — wall-clock span
-- `parameters` — JSON snapshot of `startConfig` and `goalConfig`
+- `parameters` — JSON snapshot of `startPose`, `goalPose` and `plannerMode`
 - `results` — JSON summary (`approximatedFunctionId`, `waypointCount`)
 - `hasError` / `errors` — fault isolation without rolling back the parent transaction
 - `approximatedFunctionId` — direct FK to the output trajectory
 
 `MathModelPerf` records two timing levels: `totalDurationSec` covers the full
-service call including entity persistence; `inferenceLatencyMs` covers only the
-DJL `predictor.predict()` call, which is the figure relevant to real-time control
+service call including entity persistence; `inferenceLatencyMs` covers the provider call or explicit demo generation, which is the figure relevant to real-time control
 cycle budgets.
 
 The `MathModelData` snowflake table links the run to all mathematical objects it
@@ -507,7 +499,7 @@ output trajectory were involved.
 ### Extending to real servo drives with TrajectoryAxisBinding
 
 The `moqui.math.Trajectory` computed above is a **mathematical object** — a
-sequence of 6-DOF joint-angle waypoints. To **execute** it on a physical robot
+sequence of 6-DOF TCP-pose waypoints. To **execute** it on a physical robot
 arm the waypoints must be mapped to the parameters of real servo drives or a
 motion controller. That bridge is `TrajectoryAxisBinding`:
 
@@ -575,20 +567,21 @@ JSON to the gateway endpoint `POST /api/trajectory/export`:
 
 ```json
 {
+  "requestName": "ROBOT_ARM_TRAJECTORY_EXPORT",
   "approximatedFunctionId": "100000",
-  "waypointCount": 10,
+  "waypointCount": 2,
   "mqttTopic": "moqui/robot/arm1/trajectory",
   "axes": {
-    "J1": [0.10, 0.18, …],
-    "J2": [0.00, 0.05, …],
-    "J3": […], "J4": […], "J5": […], "J6": […]
+    "X": [850, 860], "Y": [0, 20], "Z": [300, 310],
+    "A": [0, 0], "B": [0, 0], "C": [0, 0]
   }
 }
 ```
 
 The gateway publishes this payload to the MQTT topic; `MqttParameterSub` on the
 PLC receives it and passes each key/value pair to `JsonToParametersMapper`, which
-maps `"J1"`…`"J6"` array values to the controller's trajectory buffer.
+must be specialized to map the declared axes into the controller's trajectory
+buffer. The stock HVAC scalar mapper is not an array/trajectory decoder.
 
 For the **persistent recipe path** use `export#DeviceConfig` instead: store
 waypoints as `DeviceConfig/Parameter` entries under a `DeviceRuleSet`, then call
@@ -670,7 +663,7 @@ flows together:
 - Grafana-ready `DeviceDashboard` assignments used by the SimpleScreens UI.
 
 This XML seed is the reference scenario mirrored by the local SQL fixtures in
-`moqui-device-gateway`. The SQL files may stay transport-oriented for Camel
+`moqui-device-gateway`. The SQL files may stay transport-oriented for gateway
 tests, but the IDs, device roles, and operational meaning should remain aligned
 with `DeviceTestData.xml`.
 
@@ -705,7 +698,8 @@ After `moqui-math` and `moqui-device` are installed under
 `runtime/component`, load the example with the normal Moqui seed-data flow:
 
 ```shell
-./gradlew load -Ptypes=seed
+# MR-Moqui master, after installing mantle-udm, moqui-math and moqui-device:
+./moq load seed-initial seed
 ```
 
 The same reviewed seed then drives three downstream projections:
@@ -734,7 +728,7 @@ becoming a second configuration source.
 
 - **[moqui-math](https://github.com/moqui/moqui-math)** — the dual math model (models, runs, lineage, trajectories).
 - **[moqui-plc](https://github.com/moqui/moqui-plc)** — generates IEC 61131-3 PLC code from this device model and its status flows.
-- **[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway)** — executes this model at the edge as Apache Camel routes.
+- **[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway)** — executes this model at the edge as Rust/Tokio tasks (`mr-moqui`) or Java/Apache Camel routes (`main`, formerly `master`).
 
 ## Dependencies
 
@@ -742,4 +736,43 @@ becoming a second configuration source.
 
 ## Install
 
+For this branch, follow the MR-Moqui setup below. For the Java component only:
+
     ./gradlew getComponent -Pcomponent=moqui-device
+
+## MR-Moqui branch
+
+Use this branch with [MR-Moqui master](https://github.com/moqui/mr-moqui), plus
+`mantle-udm` and `moqui-math` under `runtime/component`. From the framework root:
+
+```bash
+./moq build --debug
+./moq load --debug seed-initial
+./moq load --debug seed
+./moq test --debug moqui-device
+```
+
+The Gradle/JVM/DJL examples above apply to the Java implementation. MR-Moqui
+runs the component's JavaScript/XML services and uses its REST client for gateway
+and inference calls. Gateway API keys are sent in `X-API-Key`; payloads are JSON.
+Binary content is encoded as standard padded base64 without converting bytes
+to UTF-8. A non-success HTTP response stops the operation.
+
+The Rust gateway's [branch-specific README](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
+is authoritative for MQTT v5, OPC UA, file/SFTP transport, scope and deployment.
+The gateway and framework are independent processes sharing the model database.
+`export#Trajectory` now includes `requestName`; the gateway checks that request's
+scope and that `mqttTopic` matches its modeled query.
+
+### Trajectory planning on MR-Moqui
+
+This branch does not load DJL/JNI or the ONNX file in-process. The default
+`plannerMode=remote` requires `inferenceUrl`, an HTTP JSON provider receiving
+`mathModelId`, `startPose` and `goalPose` and returning `waypoints` (at least two
+arrays of six finite numeric coordinates). `apiKey` is optional. Failed or
+invalid inference never falls back to interpolation.
+
+`plannerMode=linear-demo` explicitly generates ten interpolated TCP poses for
+examples and records `AfiLinearPath`. It is not model inference or a verified
+motion planner. The existing ONNX training/Java documentation describes the
+Java implementation; use a configured provider for actual inference here.

@@ -15,14 +15,14 @@ along with this software (see the LICENSE.md file). If not, see
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
-    <service verb="call" noun="OpenVla" type="remote-rest" method="post"
-            location="${openVlaLocation}">
+    <service verb="call" noun="OpenVla">
         <description>
             Calls the OpenVLA REST endpoint and returns the predicted robot action.
             This is the thin transport wrapper around the real HTTP call.
         </description>
         <in-parameters>
             <parameter name="openVlaLocation" required="true"/>
+            <parameter name="apiKey"/>
             <parameter name="instruction" required="true"/>
             <parameter name="image_base64" required="true"/>
             <parameter name="unnorm_key"/>
@@ -33,16 +33,25 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="modelId"/>
             <parameter name="unnormKey"/>
         </out-parameters>
+        <actions><script><![CDATA[
+            const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                .parameters({url: openVlaLocation, apiKey: apiKey, payload: {instruction: instruction, image_base64: image_base64, unnorm_key: unnorm_key, do_sample: do_sample}}).call();
+            if (ec.message.hasError()) return;
+            const data = output.response || {};
+            action = data.action;
+            modelId = data.modelId;
+            unnormKey = data.unnormKey;
+        ]]></script></actions>
     </service>
 
-    <service verb="call" noun="OpenVlaGrounding" type="remote-rest" method="post"
-            location="${openVlaLocation}">
+    <service verb="call" noun="OpenVlaGrounding">
         <description>
             Calls an OpenVLA-compatible visual grounding endpoint and returns the
             object localization result in image space, with an optional target TCP pose.
         </description>
         <in-parameters>
             <parameter name="openVlaLocation" required="true"/>
+            <parameter name="apiKey"/>
             <parameter name="instruction" required="true"/>
             <parameter name="image_base64" required="true"/>
             <parameter name="return_target_pose" type="Boolean"/>
@@ -57,6 +66,19 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="coordinateSystem"/>
             <parameter name="modelId"/>
         </out-parameters>
+        <actions><script><![CDATA[
+            const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                .parameters({url: openVlaLocation, apiKey: apiKey, payload: {instruction: instruction, image_base64: image_base64, return_target_pose: return_target_pose, target_pose_dimension: target_pose_dimension}}).call();
+            if (ec.message.hasError()) return;
+            const data = output.response || {};
+            boundingBox = data.boundingBox;
+            center = data.center;
+            targetPose = data.targetPose;
+            objectLabel = data.objectLabel;
+            confidence = data.confidence;
+            coordinateSystem = data.coordinateSystem;
+            modelId = data.modelId;
+        ]]></script></actions>
     </service>
 
     <service verb="run" noun="OpenVla">
@@ -116,17 +138,24 @@ along with this software (see the LICENSE.md file). If not, see
                     ec.message.addError(`Could not resolve image location ${imageLocation}.`);
                     return;
                 }
-                let imageBytes = null;
-                if (rr.openStream) {
-                    rr.openStream().withStream((stream) => { imageBytes = stream.bytes; });
+                const stream = rr.openStream();
+                if (!stream) { ec.message.addError("Image file does not exist."); return; }
+                let imageBytes;
+                try { imageBytes = stream.readAllBytes(); } finally { stream.close(); }
+                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                imageBase64 = "";
+                for (let i = 0; i < imageBytes.length; i += 3) {
+                    const a = imageBytes[i], b = imageBytes[i + 1] || 0, c = imageBytes[i + 2] || 0;
+                    imageBase64 += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b >> 4)]
+                        + (i + 1 < imageBytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : "=")
+                        + (i + 2 < imageBytes.length ? alphabet[c & 63] : "=");
                 }
-                imageBase64 = imageBytes && imageBytes.encodeBase64 ? imageBytes.encodeBase64().toString() : "";
                 const baseUrl = (openVlaBaseUrl || "http://openvla:8000").replace(/\/+$/, "");
-                openVlaLocation = apiKey ? `${baseUrl}/act?apiKey=${encodeURIComponent(apiKey)}` : `${baseUrl}/act`;
+                openVlaLocation = `${baseUrl}/act`;
             ]]></script>
 
             <service-call name="moqui.device.TrajectoryPlannerServices.call#OpenVla"
-                    in-map="{openVlaLocation:openVlaLocation, instruction:prompt, image_base64:imageBase64,
+                    in-map="{openVlaLocation:openVlaLocation, apiKey:apiKey, instruction:prompt, image_base64:imageBase64,
                             unnorm_key:unnormKey, do_sample:doSample}"
                     out-map="openVlaResult"/>
 
@@ -210,17 +239,24 @@ along with this software (see the LICENSE.md file). If not, see
                     ec.message.addError(`Could not resolve image location ${imageLocation}.`);
                     return;
                 }
-                let imageBytes = null;
-                if (rr.openStream) {
-                    rr.openStream().withStream((stream) => { imageBytes = stream.bytes; });
+                const stream = rr.openStream();
+                if (!stream) { ec.message.addError("Image file does not exist."); return; }
+                let imageBytes;
+                try { imageBytes = stream.readAllBytes(); } finally { stream.close(); }
+                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                imageBase64 = "";
+                for (let i = 0; i < imageBytes.length; i += 3) {
+                    const a = imageBytes[i], b = imageBytes[i + 1] || 0, c = imageBytes[i + 2] || 0;
+                    imageBase64 += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b >> 4)]
+                        + (i + 1 < imageBytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : "=")
+                        + (i + 2 < imageBytes.length ? alphabet[c & 63] : "=");
                 }
-                imageBase64 = imageBytes && imageBytes.encodeBase64 ? imageBytes.encodeBase64().toString() : "";
                 const baseUrl = (openVlaBaseUrl || "http://openvla:8000").replace(/\/+$/, "");
-                openVlaLocation = apiKey ? `${baseUrl}/ground?apiKey=${encodeURIComponent(apiKey)}` : `${baseUrl}/ground`;
+                openVlaLocation = `${baseUrl}/ground`;
             ]]></script>
 
             <service-call name="moqui.device.TrajectoryPlannerServices.call#OpenVlaGrounding"
-                    in-map="{openVlaLocation:openVlaLocation, instruction:prompt, image_base64:imageBase64,
+                    in-map="{openVlaLocation:openVlaLocation, apiKey:apiKey, instruction:prompt, image_base64:imageBase64,
                             return_target_pose:returnTargetPose, target_pose_dimension:targetPoseDimension}"
                     out-map="groundingResult"/>
 
@@ -269,24 +305,24 @@ along with this software (see the LICENSE.md file). If not, see
                     const createVector = (name, description, vectorSpaceEnumId, purposeEnumId, values) => {
                         if (!values || !values.length) return null;
                         const vectorValue = ec.entity.makeValue("moqui.math.Vector");
-                        vectorValue.setAll({
+                        vectorValue.setFields({
                             vectorTypeEnumId: "VtOrdinary",
                             purposeEnumId: purposeEnumId,
                             vectorSpaceEnumId: vectorSpaceEnumId,
                             name: name,
                             description: description,
                             dimension: values.length
-                        });
+                        }, true, null, null);
                         vectorValue.setSequencedIdPrimary();
                         vectorValue.create();
                         for (let idx = 0; idx < values.length; idx++) {
                             const componentValue = ec.entity.makeValue("moqui.math.VectorComponent");
-                            componentValue.setAll({
+                            componentValue.setFields({
                                 vectorId: vectorValue.vectorId,
                                 dimensionIndex: idx,
                                 componentTypeEnumId: "VctCanonical",
                                 realValue: values[idx]
-                            });
+                            }, true, null, null);
                             componentValue.setSequencedIdPrimary();
                             componentValue.create();
                         }
@@ -337,7 +373,8 @@ along with this software (see the LICENSE.md file). If not, see
 
     <service verb="run" noun="RobotArmTrajectoryPlanner">
         <description>
-            Run a 6-DOF robot TCP waypoint planner using a DJL ONNX model.
+            Run a 6-DOF TCP waypoint planner through a configured HTTP inference provider.
+            MR-Moqui does not load DJL/JNI. The explicit linear-demo mode only interpolates endpoints.
 
             The model accepts [tcp_start(6) || tcp_goal(6)] (12 inputs) and produces
             N_WAYPOINTS x 6 TCP poses (flat output), aligned with the PLC waypoint
@@ -371,6 +408,11 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="goalPose" type="List" required="true">
                 <description>6 TCP pose values [X,Y,Z,A,B,C] — goal pose in the same space used by the PLC.</description>
             </parameter>
+            <parameter name="plannerMode" default-value="remote">
+                <description>remote requires inferenceUrl; linear-demo is explicit interpolation for examples only.</description>
+            </parameter>
+            <parameter name="inferenceUrl"/>
+            <parameter name="apiKey"/>
             <parameter name="trajectoryName" type="String" default-value=""/>
         </in-parameters>
         <out-parameters>
@@ -407,7 +449,7 @@ along with this software (see the LICENSE.md file). If not, see
                     const normalized = [];
                     for (let i = 0; i < config.length; i++) {
                         const val = Number(config[i]);
-                        if (isNaN(val)) {
+                        if (!Number.isFinite(val)) {
                             ec.message.addError(`${fieldName}[${i}] must be numeric, found '${config[i]}'.`);
                             return null;
                         }
@@ -423,7 +465,13 @@ along with this software (see the LICENSE.md file). If not, see
                 goalPoseList = normalizePose(goalPose, "goalPose");
                 if (!startPoseList || !goalPoseList) return;
 
-                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList });
+                if (plannerMode !== "linear-demo" && plannerMode !== "remote") {
+                    ec.message.addError("plannerMode must be remote or linear-demo."); return;
+                }
+                if (plannerMode === "remote" && !inferenceUrl) {
+                    ec.message.addError("MR-Moqui requires inferenceUrl for model inference. Use plannerMode=linear-demo only for explicit interpolation examples."); return;
+                }
+                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList, plannerMode: plannerMode });
                 trajectoryLabel = trajectoryName || null;
             ]]></script>
 
@@ -440,30 +488,35 @@ along with this software (see the LICENSE.md file). If not, see
             <script><![CDATA[
                 try {
                     const tInferStart = Date.now();
-                    const nWaypoints = 10;
-                    const generatedWaypoints = [];
-                    for (let i = 0; i < nWaypoints; i++) {
-                        const alpha = nWaypoints > 1 ? i / (nWaypoints - 1) : 0;
-                        const waypoint = [];
-                        for (let j = 0; j < 6; j++) {
-                            const val = startPoseList[j] + alpha * (goalPoseList[j] - startPoseList[j]);
-                            waypoint.push(Math.round(val * 10000) / 10000);
+                    if (plannerMode === "linear-demo") {
+                        waypoints = [];
+                        for (let i = 0; i < 10; i++) {
+                            waypoints.push(startPoseList.map((v, j) => v + (i / 9) * (goalPoseList[j] - v)));
                         }
-                        generatedWaypoints.push(waypoint);
+                    } else {
+                        const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                            .parameters({url: inferenceUrl, apiKey: apiKey, payload: {
+                                mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList
+                            }}).call();
+                        if (ec.message.hasError()) return;
+                        waypoints = output.response?.waypoints;
                     }
-                    waypoints = generatedWaypoints;
-                    waypointCount = nWaypoints;
+                    if (!Array.isArray(waypoints) || waypoints.length < 2 || waypoints.some(
+                            point => !Array.isArray(point) || point.length !== 6 || point.some(value => typeof value !== 'number' || !Number.isFinite(value)))) {
+                        throw new Error("Planner must return at least two waypoints, each with six finite numeric coordinates.");
+                    }
+                    waypointCount = waypoints.length;
                     inferenceLatencyMs = Date.now() - tInferStart;
                 } catch (err) {
                     const elapsed = Date.now() - t0;
                     const runRef = ec.entity.find("moqui.math.MathModelRun").condition("mathModelRunId", runId).one();
                     if (runRef) {
-                        runRef.setAll({
+                        runRef.setFields({
                             endDate: ec.user.nowTimestamp,
                             runningTimeMillis: elapsed,
                             hasError: "Y",
                             errors: err.message || String(err)
-                        });
+                        }, true, null, null);
                         runRef.update();
                     }
                     ec.message.addError(`Trajectory inference failed: ${err.message || err}`);
@@ -473,7 +526,7 @@ along with this software (see the LICENSE.md file). If not, see
 
             <set field="trajectoryLabel" from="trajectoryLabel || 'AI Trajectory ' + runId"/>
             <set field="approximatedFunctionFields" from="{vectorSpaceEnumId: 'EngTcpPose6Dof', codomainTypeEnumId: 'AfctVector',
-                dataStorageEnumId: 'AfdsPointTable', purposeEnumId: 'AfpRobotMotion', interpolationEnumId: 'AfiAIPath',
+                dataStorageEnumId: 'AfdsPointTable', purposeEnumId: 'AfpRobotMotion', interpolationEnumId: plannerMode === 'linear-demo' ? 'AfiLinearPath' : 'AfiAIPath',
                 name: trajectoryLabel, description: '6-DOF TCP waypoint trajectory from AI planner'}"/>
             <entity-make-value entity-name="moqui.math.ApproximatedFunction" value-field="approximatedFunctionValue" map="approximatedFunctionFields"/>
             <script><![CDATA[approximatedFunctionValue.setSequencedIdPrimary()]]></script>
@@ -579,12 +632,12 @@ along with this software (see the LICENSE.md file). If not, see
 
                 const runRef = ec.entity.find("moqui.math.MathModelRun").condition("mathModelRunId", runId).one();
                 if (runRef) {
-                    runRef.setAll({
+                    runRef.setFields({
                         endDate: ec.user.nowTimestamp,
                         runningTimeMillis: elapsed,
                         approximatedFunctionId: approximatedFunctionId,
                         results: resultsJson
-                    });
+                    }, true, null, null);
                     runRef.update();
                 }
 
