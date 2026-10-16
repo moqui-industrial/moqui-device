@@ -345,8 +345,8 @@ along with this software (see the LICENSE.md file). If not, see
                 encoded = ec.resource.encodeBase64(fileBytes);
             } else if (typeof btoa === 'function') {
                 encoded = btoa(fileBytes);
-            } else if (typeof StringUtilities !== 'undefined' && StringUtilities.base64UrlEncode) {
-                encoded = StringUtilities.base64UrlEncode(fileBytes);
+            } else if (typeof globalThis.StringUtilities !== 'undefined' && globalThis.StringUtilities.base64UrlEncode) {
+                encoded = globalThis.StringUtilities.base64UrlEncode(fileBytes);
             }
 
             const pathTokens = content.contentLocation.split('/');

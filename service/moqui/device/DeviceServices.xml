@@ -167,7 +167,7 @@ along with this software (see the LICENSE.md file). If not, see
                     const enumIdSet = enumResult.enumIdSet;
                     const hasType = Array.isArray(enumIdSet) ? enumIdSet.includes(device.deviceTypeEnumId)
                         : (enumIdSet && typeof enumIdSet.has === 'function' ? enumIdSet.has(device.deviceTypeEnumId)
-                        : (enumIdSet && typeof enumIdSet.contains === 'function' ? enumIdSet.contains(device.deviceTypeEnumId) : false));
+                        : (enumIdSet && typeof enumIdSet.includes === 'function' ? enumIdSet.includes(device.deviceTypeEnumId) : false));
 
                     if (!hasType) {
                         ec.message.addError(`Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}].`);
@@ -353,7 +353,7 @@ along with this software (see the LICENSE.md file). If not, see
             <!-- Filter write requests to send only changed parameters.
                  This filtering only makes sense for items not in a bulk request. -->
             <if condition="'DrtWrite' === request.requestTypeEnumId &amp;&amp; 'Y' === request.onlyChangedParameters">
-                <set field="parameterIdSet" from="(requestItemList || []).map(it => it.parameterId)"/>
+                <set field="parameterIdSet" from="(requestItemList ?? []).map(it => it.parameterId)"/>
                 <entity-find entity-name="moqui.entity.EntityAuditLog" list="changedRows" distinct="true" cache="false">
                     <econdition field-name="changedEntityName" value="moqui.math.Parameter"/>
                     <econdition field-name="pkPrimaryValue" operator="in" from="parameterIdSet"/>
@@ -361,10 +361,10 @@ along with this software (see the LICENSE.md file). If not, see
                     <order-by field-name="parameterId"/>
                     <select-field field-name="pkPrimaryValue"/>
                 </entity-find>
-                <set field="changedIds" from="(changedRows || []).map(it => it.pkPrimaryValue)"/>
-                <set field="requestItemList" from="(requestItemList || []).filter(it => changedIds.includes(it.parameterId))"/>
+                <set field="changedIds" from="(changedRows ?? []).map(it => it.pkPrimaryValue)"/>
+                <set field="requestItemList" from="(requestItemList ?? []).filter(it => changedIds.includes(it.parameterId))"/>
             </if>
-            <if condition="!bulkRequestItemList &amp;&amp; !requestItemList &amp;&amp; !request.query">
+            <if condition="!(bulkRequestItemList?.length) &amp;&amp; !(requestItemList?.length) &amp;&amp; !request.query">
                 <return message="The device request with name ${requestName} has no items to process."/>
             </if>
             <log level="info" message="Running device request with name ${request.requestName}."/>
@@ -403,7 +403,7 @@ along with this software (see the LICENSE.md file). If not, see
                 <entity-find entity-name="moqui.device.DeviceContent" list="deviceContentList">
                     <econdition field-name="deviceId"/><econdition field-name="contentTypeEnumId"/>
                     <order-by field-name="-contentDate"/></entity-find>
-                <if condition="deviceContentList">
+                <if condition="deviceContentList?.length">
                     <set field="deviceContent" from="deviceContentList[0]"/>
                     <break/>
                 </if>
@@ -452,7 +452,7 @@ along with this software (see the LICENSE.md file). If not, see
         <out-parameters><parameter name="contentLocation"/></out-parameters>
         <actions>
             <set field="filename" from="contentFile.getName()"/>
-            <if condition="org.moqui.resource.ResourceReference.isTextFilename(filename)"><then>
+            <if condition="ResourceReference.isTextFilename(filename)"><then>
                 <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') || 'dbresource://mantle/content'"/>
             </then><else>
                 <set field="contentRoot" from="ec.user.getPreference('mantle.content.large.root') || 'dbresource://mantle/content'"/>
