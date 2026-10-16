@@ -801,8 +801,31 @@ export ORT_DYLIB_PATH=/absolute/path/to/libonnxruntime.so
 Native inference resolves `MathModel` -> `MathModelDefContent` (`MmCntOnnx`) ->
 `contentLocation` through the Moqui resource facade. Use a local or `component://`
 ONNX file; adjacent external tensor data files can be loaded by ONNX Runtime.
-Materialize remote/DB artifacts locally before use. Sessions are loaded per call,
-as in the Java helper; this example does not claim a hard real-time cycle budget.
+Materialize remote/DB artifacts locally before use.
+
+`moqui_device::OnnxToolFactory` owns the native sessions for the lifetime of the
+framework, following the Moqui ToolFactory pattern. Inference services borrow a
+cached session; they do not load ONNX on every invocation. The cache is keyed by
+model ID and profile, bounded by `onnx.session.cache.max` (default 8), and evicts
+the least recently used entry. Calls using one session serialize access to
+`ort::Session`; different models can execute independently. The first load is
+serialized to avoid duplicate concurrent loads. Shutdown releases cached sessions;
+in-flight calls finish with their borrowed session.
+
+A changed local path, modification time, size, `MathModelDefContent.contentDate`,
+or adjacent `<model>.onnx.data` modification time/size triggers a reload. Publish
+artifacts atomically and advance `contentDate` when replacing external tensors
+with other names or preserving file metadata. An explicit invalidation is also
+available from a server-side action:
+
+```javascript
+const onnx = ec.factory.getTool("Onnx");
+onnx.invalidate("TrjPlannerMlp6DofV1"); // reload on the next inference
+// onnx.clear();                       // release all cached entries
+// onnx.sessionCount(); onnx.loadCount(); // process-local diagnostic counters
+```
+
+This resource lifecycle does not establish a hard real-time cycle budget.
 Missing features, files or invalid inference produce an error; there is no
 implicit fallback to interpolation or another process.
 
@@ -838,5 +861,6 @@ Protocol execution belongs to the separate gateway. MQTT v5 is supported by
 Java's Camel/Paho MQTT5 and Rust's `rumqttc::v5`, including QoS acknowledgements
 and session options. Camel URI syntax is accepted for migration. Full gateway
 parity is not yet established: Rust adds `/api/trajectory/export`, absent from
-the reviewed Java branch, and advanced OPC UA security/arbitrary Camel options
-remain documented limitations in the gateway's branch README.
+the reviewed Java branch. Rust OPC UA supports explicit security policies,
+certificate trust, password and X509 user identities; supported options and
+remaining Camel-specific differences are documented in the gateway's branch README.

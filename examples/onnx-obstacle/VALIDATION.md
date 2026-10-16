@@ -37,3 +37,10 @@ The combined moqui-device/GenICam suite passed all 18 features without Mantle
 with every optional provider/native feature enabled. Native-feature-disabled compilation and native
 feature compilation/Clippy were checked separately. See the GenICam validation
 record for its worker, binary, persistence and retention checks.
+
+Factory lifecycle follow-up: three native features passed without an HTTP
+provider or Mantle. The added feature proves two calls cause one load, explicit
+invalidation causes a second load, and a model contentDate revision causes a
+third. Native-feature-enabled and disabled compilation/Clippy were checked.
+Session ownership, bounded LRU storage and shutdown now live in `OnnxToolFactory`.
+Gateway secure protocol results are recorded in its separate validation report.

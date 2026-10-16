@@ -116,7 +116,10 @@ The default `plannerMode=native` invokes
 `moqui.device.OnnxServices.infer#TrajectoryWaypoints` in the framework process.
 The helper is also directly invocable to obtain waypoints without persistence.
 It resolves `MathModelDefContent.contentLocation` with the Moqui resource facade
-and loads its local/component file, including adjacent external tensor files.
+and uses the process-wide `Onnx` ToolFactory to load and reuse its local/component
+file, including external tensors. See [session lifecycle and invalidation](../../README.md#trajectory-planning-on-mr-moqui)
+for cache limits, revision tracking and `ec.factory.getTool("Onnx").invalidate(id)`.
+The native service loads a model only on a cache miss or artifact revision.
 The main planner records the obstacle in `MathModelRun.parameters` and persists
 the returned poses in the normal trajectory entities.
 

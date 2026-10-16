@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<moqui-conf xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/moqui-conf-3.xsd">
+    <default-property name="onnx.session.cache.max" value="8"/>
+    <tools><tool-factory class="moqui_device::OnnxToolFactory" init-priority="25"/></tools>
+</moqui-conf>

@@ -69,3 +69,7 @@ trajectory_native_test=true ./moq test --debug moqui-device --db existing --feat
 
 The full suite enables both native and optional remote checks when both sets
 of environment variables are configured.
+
+The native factory feature additionally verifies session reuse, explicit
+invalidation and reload after a `MathModelDefContent.contentDate` revision. It
+uses real ONNX Runtime sessions, with no remote provider.

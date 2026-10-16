@@ -41,6 +41,31 @@ feature("native Rust ONNX service accepts the Java twelve-input contract", {
     },
 });
 
+feature("native Rust ONNX factory reuses and explicitly invalidates model sessions", {
+    ignore: !System.getProperty("trajectory_native_test"),
+    when() {
+        const tool = ec.getTool("Onnx");
+        tool.clear();
+        const startLoads = tool.loadCount();
+        const parameters = {mathModelId:"DemoTcp12V1", startPose:[0,0,0,0,0,0], goalPose:[1,0,0,0,0,0]};
+        call("moqui.device.OnnxServices.infer#TrajectoryWaypoints",parameters);
+        call("moqui.device.OnnxServices.infer#TrajectoryWaypoints",parameters);
+        const reusedLoads = tool.loadCount() - startLoads;
+        const reusedCount = tool.sessionCount();
+        tool.invalidate("DemoTcp12V1");
+        call("moqui.device.OnnxServices.infer#TrajectoryWaypoints",parameters);
+        const afterLoads=tool.loadCount()-startLoads;
+        call("update#moqui.math.MathModelDefContent", {mathModelDefContentId:"DemoTcp12Onnx",contentDate:"2002-01-01 00:00:00"});
+        try {
+            call("moqui.device.OnnxServices.infer#TrajectoryWaypoints",parameters);
+            return {reusedLoads,reusedCount,afterLoads,revisionLoads:tool.loadCount()-startLoads};
+        } finally {
+            call("update#moqui.math.MathModelDefContent", {mathModelDefContentId:"DemoTcp12Onnx",contentDate:null});
+        }
+    },
+    then(out) { out.reusedLoads == 1; out.reusedCount == 1; out.afterLoads == 2; out.revisionLoads == 3; },
+});
+
 feature("the canonical gateway scenario and HVAC whitelist load", {
     when() {
         return {

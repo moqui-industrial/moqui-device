@@ -21,8 +21,8 @@ pub fn infer_trajectory_waypoints(
 
 #[cfg(feature = "onnx")]
 fn infer(ec: &ExecutionContext, parameters: &Parameters) -> anyhow::Result<Parameters> {
-    use crate::onnx_planner::{PlanRequest, Planner};
-    use anyhow::{Context, bail, ensure};
+    use crate::onnx_planner::PlanRequest;
+    use anyhow::{Context, ensure};
     use moqui_lib::{json, object::Value};
 
     let model_id = parameters
@@ -65,11 +65,6 @@ fn infer(ec: &ExecutionContext, parameters: &Parameters) -> anyhow::Result<Param
         std::path::Path::new(&runtime_library).is_file(),
         "ORT_DYLIB_PATH does not name an existing library file"
     );
-    let mut planner = match profile {
-        "tcp12" => Planner::load_tcp12(path, model_id.into())?,
-        "corridor13" => Planner::load(path)?,
-        _ => bail!("onnxProfile must be tcp12 or corridor13"),
-    };
     let required = |key: &str| {
         parameters
             .get(key)
@@ -80,7 +75,12 @@ fn infer(ec: &ExecutionContext, parameters: &Parameters) -> anyhow::Result<Param
         "mathModelId": model_id, "startPose": required("startPose")?, "goalPose": required("goalPose")?,
         "obstacle": parameters.get("obstacle").map(json::to_json),
     }))?;
-    let response = planner.plan(&request)?;
+    let factory = ec
+        .factory()
+        .get_tool_factory_typed::<crate::onnx_tool::OnnxToolFactory>("Onnx")
+        .context("ONNX tool factory is not configured")?;
+    let revision = format!("{:?}", content.get("contentDate"));
+    let response = factory.sessions.plan(path, profile, &revision, &request)?;
     let mut out = Parameters::new();
     out.insert(
         "waypoints".into(),
