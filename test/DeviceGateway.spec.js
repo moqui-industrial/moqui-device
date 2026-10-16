@@ -139,3 +139,54 @@ feature("remote trajectory planning persists provider waypoints", {
         out.samples == 2;
     },
 });
+
+feature("the demo planner rejects obstacles before creating a trajectory", {
+    allowMessageErrors: true,
+    when() {
+        let failed = false;
+        try {
+            call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", {
+                mathModelId:"TrjPlannerMlp6DofV1", plannerMode:"linear-demo",
+                startPose:[0,0,0,0,0,0], goalPose:[1,0,0,0,0,0],
+                obstacle:{center:[0.5,0,0], radius:0.12},
+            });
+            failed = ec.message.hasError();
+        } catch (error) { failed = true; }
+        return {failed};
+    },
+    then(out) { out.failed == true; },
+});
+
+feature("actual Rust ONNX obstacle replanning persists the changed trajectory", {
+    ignore: !System.getProperty("trajectory_onnx_test_url"),
+    when() {
+        const parameters = {
+            mathModelId:"DemoObstacleCorridorV1", inferenceUrl:System.getProperty("trajectory_onnx_test_url") + "/plan",
+            startPose:[0,0,0,0,0,0], goalPose:[1,0,0,0,0,0],
+        };
+        const before = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", parameters);
+        parameters.obstacle = {center:[0.5,0,0], radius:0.12, margin:0.08, coordinateFrame:"demo-tcp-metres"};
+        const after = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", parameters);
+        const run = ec.entity.find("moqui.math.MathModelRun").condition("mathModelRunId",after.mathModelRunId).one();
+        const middleY = (id) => {
+            const sample = ec.entity.find("moqui.math.ApproximatedFunctionSample")
+                .condition("approximatedFunctionId",id).condition("sampleCode","WP0005").one();
+            return ec.entity.find("moqui.math.VectorComponent").condition("vectorId",sample.sampleVectorId)
+                .condition("dimensionIndex",1).one().realValue.toNumber();
+        };
+        return {
+            before, after, run, beforeY:middleY(before.approximatedFunctionId), afterY:middleY(after.approximatedFunctionId),
+            samples:ec.entity.find("moqui.math.ApproximatedFunctionSample").condition("approximatedFunctionId",after.approximatedFunctionId).count(),
+            approximation:ec.entity.find("moqui.math.ApproximatedFunction").condition("approximatedFunctionId",after.approximatedFunctionId).one(),
+        };
+    },
+    then(out) {
+        out.before.approximatedFunctionId != out.after.approximatedFunctionId;
+        out.run.hasError == "N";
+        JSON.parse(out.run.parameters).obstacle.radius == 0.12;
+        out.samples == 11;
+        out.approximation.interpolationEnumId == "AfiAIPath";
+        Math.abs(Number(out.beforeY)) < 0.00001;
+        Math.abs(Number(out.afterY) - 0.20) < 0.00001;
+    },
+});

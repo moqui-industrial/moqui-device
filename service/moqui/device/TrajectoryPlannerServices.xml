@@ -393,10 +393,11 @@ along with this software (see the LICENSE.md file). If not, see
                 MathModelPerf                   — latency / throughput counters
                 MathModelData                   — links model to trajectory + input vectors
 
-            The ONNX model file is resolved from MathModelDefContent.contentLocation
-            (e.g. component://moqui-device/data/ml/trajectory_planner.onnx).
-            The current bundled model must be retrained/exported in the same TCP pose
-            space (X,Y,Z,A,B,C) to match this service contract.
+            On MR-Moqui an explicit inference provider owns ONNX loading. The
+            MathModelDefContent record describes the model artifact; its URI is
+            not a path on the provider host. Configure the provider's local file
+            and matching mathModelId. Optional obstacle data is provider-specific
+            and must use calibrated world coordinates, not image pixels.
         </description>
         <in-parameters>
             <parameter name="mathModelId" required="true">
@@ -413,6 +414,9 @@ along with this software (see the LICENSE.md file). If not, see
             </parameter>
             <parameter name="inferenceUrl"/>
             <parameter name="apiKey"/>
+            <parameter name="obstacle" type="Map">
+                <description>Optional calibrated obstacle observation passed to the remote inference provider.</description>
+            </parameter>
             <parameter name="trajectoryName" type="String" default-value=""/>
         </in-parameters>
         <out-parameters>
@@ -471,7 +475,10 @@ along with this software (see the LICENSE.md file). If not, see
                 if (plannerMode === "remote" && !inferenceUrl) {
                     ec.message.addError("MR-Moqui requires inferenceUrl for model inference. Use plannerMode=linear-demo only for explicit interpolation examples."); return;
                 }
-                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList, plannerMode: plannerMode });
+                if (plannerMode === "linear-demo" && obstacle) {
+                    ec.message.addError("linear-demo cannot plan around obstacles; configure an inference provider."); return;
+                }
+                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList, plannerMode: plannerMode, obstacle: obstacle || null });
                 trajectoryLabel = trajectoryName || null;
             ]]></script>
 
@@ -494,11 +501,11 @@ along with this software (see the LICENSE.md file). If not, see
                             waypoints.push(startPoseList.map((v, j) => v + (i / 9) * (goalPoseList[j] - v)));
                         }
                     } else {
+                        const inferencePayload = {mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList};
+                        if (obstacle) inferencePayload.obstacle = obstacle;
                         const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
-                            .parameters({url: inferenceUrl, apiKey: apiKey, payload: {
-                                mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList
-                            }}).call();
-                        if (ec.message.hasError()) return;
+                            .parameters({url: inferenceUrl, apiKey: apiKey, payload: inferencePayload}).call();
+                        if (ec.message.hasError()) throw new Error("Inference provider returned an error.");
                         waypoints = output.response?.waypoints;
                     }
                     if (!Array.isArray(waypoints) || waypoints.length < 2 || waypoints.some(

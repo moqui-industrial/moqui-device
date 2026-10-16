@@ -1,0 +1,132 @@
+# Isolated Rust ONNX obstacle replanning example
+
+This example loads a real ONNX neural network with Rust `ort` and ONNX Runtime
+on the CPU. It is an independent Cargo workspace: no Moqui installation,
+Mantle, database, MQTT broker, camera SDK or PLC is needed to run its tests.
+Its HTTP endpoint also implements the MR-Moqui trajectory provider contract.
+
+The network uses 13 inputs (start TCP pose, goal TCP pose, detour clearance),
+a fixed 26-unit ReLU feature layer and a fitted 66-output layer. `train.py`
+fits the output weights against synthetic waypoint targets using least squares,
+checks the fit, validates the ONNX graph and exports `model.onnx`. Rust loads
+that file with `Session::builder().commit_from_file(...)`; every trajectory
+comes from `session.run(...)`. Python is needed for export, not inference.
+
+## Build and run on Linux
+
+From this directory, with Rust/Cargo and Python 3.10–3.13:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python train.py
+# The wheel supplies the shared library; ort dynamically loads it.
+export ORT_DYLIB_PATH="$(.venv/bin/python -c 'import pathlib, onnxruntime; print(next((pathlib.Path(onnxruntime.__file__).parent / "capi").glob("libonnxruntime.so.*")))')"
+cargo test --locked
+cargo run --locked > report.json
+```
+
+`ort` is pinned to `2.0.0-rc.10` (ONNX Runtime API 1.22), tested here with the
+1.23.2 runtime from the pinned wheel. An independently installed compatible
+ONNX Runtime shared library can also be selected through `ORT_DYLIB_PATH`.
+See the [ort loading documentation](https://docs.rs/ort/2.0.0-rc.10/ort/session/builder/struct.SessionBuilder.html).
+No runtime binary downloads occur during Cargo build. To load another artifact
+with this exact tensor contract, set `TRAJECTORY_ONNX_MODEL=/absolute/model.onnx`.
+
+The report contains two eleven-point TCP trajectories. The first goes from
+`[0,0,0,0,0,0]` to `[1,0,0,0,0,0]`. A simulated sphere at `[0.5,0,0]`, radius
+`0.12 m` and margin `0.08 m`, triggers replanning: the middle pose becomes
+`[0.5,0.2,0,0,0,0]`. Endpoints remain fixed. Rust checks finite coordinates,
+output shape and distance to **every complete segment**, including the margin.
+Tests execute actual ONNX inference and reject invalid model IDs, frames and
+obstacles. Missing models/runtime libraries cause a failure, never a skipped test.
+
+## GenICam boundary and HTTP provider
+
+In one terminal:
+
+```bash
+cargo run --locked -- serve
+```
+
+In another:
+
+```bash
+python3 genicam_demo.py > report.json
+# Or supply fresh metadata from acquire#VisualServoFrame:
+python3 genicam_demo.py --frame /tmp/genicam-frame.json
+```
+
+[moqui-genicam](https://github.com/moqui-industrial/moqui-genicam/tree/mr-moqui)
+provides `moqui.genicam.GenicamServices.acquire#VisualServoFrame`, whose outputs
+include `frameBytes`, `jpegBytes`, `capturedAt`, `source`, `width` and `height`.
+It does **not** currently provide an obstacle detector. `genicam_demo.py` uses
+the real metadata field names and Unix-second `capturedAt` values (or RFC3339
+with timezone), rejects stale/future frames, then simulates the
+separate detector/calibration stage using `fixtures/obstacle.json` and calls
+the Rust endpoint twice. It does not inspect image content. For real hardware:
+
+1. acquire the latest frame, with a latency budget;
+2. detect the obstacle in the image and calibrate it into the robot's coordinate system;
+3. replan from the **current** TCP pose, replacing the remaining trajectory;
+4. validate kinematics, swept volume, timing and controller acceptance before dispatch.
+
+The demo accepts one centered spherical obstacle in a fixed unit-X corridor,
+in `demo-tcp-metres`, with `radius + margin <= 0.25 m`. The adapter supplies
+the positive-Y clearance feature; the learned ONNX output layer produces the
+poses. Unsupported cases return HTTP 422. This is a point-path demonstration;
+it does not model robot links, tool volume, joint limits or acceleration limits.
+Do not send its outputs to a physical controller as a commissioned motion plan.
+The loopback-only HTTP server has no production authentication layer.
+
+## Calling from MR-Moqui (optional, still no Mantle required)
+
+Install only `moqui-math` and `moqui-device`, load their ordinary seeds, then
+explicitly register this example from the MR-Moqui framework root:
+
+```bash
+./moq load --debug types=test location=runtime/component/moqui-device/examples/onnx-obstacle/ModelData.xml
+```
+
+With the Rust provider running, call the existing service from a server-side
+JavaScript action:
+
+```javascript
+const result = ec.service.sync()
+    .name("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner")
+    .parameters({
+        mathModelId: "DemoObstacleCorridorV1",
+        inferenceUrl: "http://127.0.0.1:18092/plan",
+        startPose: [0,0,0,0,0,0], goalPose: [1,0,0,0,0,0],
+        obstacle: {center:[0.5,0,0], radius:0.12, margin:0.08,
+                   coordinateFrame:"demo-tcp-metres"}
+    }).call();
+```
+
+The service records the obstacle in `MathModelRun.parameters` and persists the
+returned poses in the normal trajectory entities. The provider's model ID is
+fixed, and its local file is explicitly configured; `contentLocation` is model
+metadata, not an automatically mounted path on a different host. Existing
+12-input trajectory models cannot consume the additional clearance feature.
+The base component does not acquire an `ort` dependency or load DJL/JNI.
+
+## Existing Java/DJL trajectory models
+
+The same Rust provider can load an existing float32 ONNX trajectory model with
+the Java service's `[1,12]` input (`startPose` followed by `goalPose`). It uses
+the model's first input/output names and flattens the output into six-coordinate
+TCP poses, matching the Java `TrajectoryGenerator` contract:
+
+```bash
+export TRAJECTORY_ONNX_PROFILE=tcp12
+export TRAJECTORY_MODEL_ID=TrjPlannerMlp6DofV1
+export TRAJECTORY_ONNX_MODEL=/absolute/path/to/trajectory_planner.onnx
+cargo run --locked -- serve
+```
+
+The provider rejects obstacle observations for this profile: the existing
+12-input model has no obstacle input. The ONNX operator set must be supported by
+the installed runtime. `train.py` also exports `tcp12.onnx`, an independent test
+fixture for this tensor contract; it is not the original Java-trained artifact.
+The tests exercise both 12-input and 13-input inference. For the obstacle demo,
+unset these three variables before starting the server again.

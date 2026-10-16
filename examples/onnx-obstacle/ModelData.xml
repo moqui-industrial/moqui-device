@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entity-facade-xml type="test">
+    <!-- Explicitly loaded example; never part of ordinary component seed loading. -->
+    <moqui.math.MathModelDef mathModelDefId="DemoObstacleCorridor"
+        modelTypeEnumId="MmtDlFeedforward" usageContextEnumId="MmucInference"
+        domainEnumId="MmdEngineering" modelName="Isolated ONNX obstacle corridor demo"
+        serviceName="moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner"
+        description="ReLU 13-26-66 demo: start/goal TCP and detour clearance; not a general motion planner."
+        versionNumber="1"/>
+    <moqui.math.MathModelDefContent mathModelDefContentId="DemoObstacleCorridorOnnx"
+        mathModelDefId="DemoObstacleCorridor" contentTypeEnumId="MmCntOnnx" purposeEnumId="MmCnpMainLogic"
+        contentLocation="component://moqui-device/examples/onnx-obstacle/model.onnx"/>
+    <moqui.math.MathModel mathModelId="DemoObstacleCorridorV1" mathModelDefId="DemoObstacleCorridor"
+        sourceEnumId="MmsSimulated" modelAlias="demo-obstacle-corridor"/>
+</entity-facade-xml>

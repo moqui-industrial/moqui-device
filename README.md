@@ -1,7 +1,8 @@
 # Moqui Device
 
 This `mr-moqui` branch targets [MR-Moqui master](https://github.com/moqui/mr-moqui).
-Install `mantle-udm` and `moqui-math` with this component; see [MR-Moqui setup](#mr-moqui-branch).
+Install `moqui-math` with this component; see [MR-Moqui setup](#mr-moqui-branch).
+`mantle-udm` is optional and is needed only for the canonical test data.
 
 [![license](http://img.shields.io/badge/license-CC0%201.0%20Universal-blue.svg)](https://github.com/moqui/moqui-device/blob/master/LICENSE.md)
 
@@ -662,7 +663,16 @@ flows together:
 - observability records for `ParameterLog`, `DeviceLog`, and `Measurement`;
 - Grafana-ready `DeviceDashboard` assignments used by the SimpleScreens UI.
 
-This XML seed is the reference scenario mirrored by the local SQL fixtures in
+This XML file has `type="test"`: ordinary `seed,seed-initial,install` loading
+does not load it. Its WorkEffort and Measurement records require `mantle-udm`
+**only for these tests**, never for normal component use. For this suite, install
+Mantle and temporarily declare `<depends-on name="mantle-udm"/>` in the test
+runtime's `moqui-device/component.xml` so its test data loads after Mantle.
+Restore the ordinary manifest after testing. MR-Moqui's scratch test runner
+loads all data types; for an existing disposable database explicitly load
+`types=test` after the normal seeds. See [test instructions](test/README.md).
+
+This test XML is the reference scenario mirrored by the local SQL fixtures in
 `moqui-device-gateway`. The SQL files may stay transport-oriented for gateway
 tests, but the IDs, device roles, and operational meaning should remain aligned
 with `DeviceTestData.xml`.
@@ -698,7 +708,7 @@ After `moqui-math` and `moqui-device` are installed under
 `runtime/component`, load the example with the normal Moqui seed-data flow:
 
 ```shell
-# MR-Moqui master, after installing mantle-udm, moqui-math and moqui-device:
+# MR-Moqui master, after installing moqui-math and moqui-device:
 ./moq load seed-initial seed
 ```
 
@@ -743,18 +753,21 @@ For this branch, follow the MR-Moqui setup below. For the Java component only:
 ## MR-Moqui branch
 
 Use this branch with [MR-Moqui master](https://github.com/moqui/mr-moqui), plus
-`mantle-udm` and `moqui-math` under `runtime/component`. From the framework root:
+`moqui-math` under `runtime/component`. No Mantle component is required.
+From the framework root:
 
 ```bash
 ./moq build --debug
 ./moq load --debug seed-initial
 ./moq load --debug seed
-./moq test --debug moqui-device
 ```
 
 The Gradle/JVM/DJL examples above apply to the Java implementation. MR-Moqui
 runs the component's JavaScript/XML services and uses its REST client for gateway
 and inference calls. Gateway API keys are sent in `X-API-Key`; payloads are JSON.
+For the canonical component test suite, follow [test/README.md](test/README.md),
+which describes its additional test-only Mantle setup.
+
 Binary content is encoded as standard padded base64 without converting bytes
 to UTF-8. A non-success HTTP response stops the operation.
 
@@ -768,7 +781,7 @@ scope and that `mqttTopic` matches its modeled query.
 
 This branch does not load DJL/JNI or the ONNX file in-process. The default
 `plannerMode=remote` requires `inferenceUrl`, an HTTP JSON provider receiving
-`mathModelId`, `startPose` and `goalPose` and returning `waypoints` (at least two
+`mathModelId`, `startPose`, `goalPose` and optional `obstacle`, and returning `waypoints` (at least two
 arrays of six finite numeric coordinates). `apiKey` is optional. Failed or
 invalid inference never falls back to interpolation.
 
@@ -776,3 +789,28 @@ invalid inference never falls back to interpolation.
 examples and records `AfiLinearPath`. It is not model inference or a verified
 motion planner. The existing ONNX training/Java documentation describes the
 Java implementation; use a configured provider for actual inference here.
+
+A runnable [isolated Rust ONNX example](examples/onnx-obstacle/README.md) uses
+`ort`/ONNX Runtime to load an exported neural network, then recomputes eleven
+TCP poses after a simulated, calibrated obstacle observation. It includes real
+inference tests, segment clearance checks, a loopback HTTP provider and the
+actual GenICam frame metadata boundary. It requires no Mantle, database, broker
+or camera. Its optional `ModelData.xml` lets the normal service persist the
+results. `linear-demo` rejects obstacles rather than silently ignoring them.
+
+### Java/Rust compatibility scope
+
+The domain model and service names are shared with the Java/Groovy component.
+MR-Moqui implements the same device configuration, content transfer and trajectory
+persistence contracts using JavaScript/XML. Protocol execution belongs to the
+separate gateway. MQTT v5 is supported by both gateway implementations: Java
+uses Camel/Paho MQTT5 and Rust uses `rumqttc::v5`, including QoS acknowledgement
+and session options. Camel URI syntax is accepted for migration.
+
+Full implementation equivalence is not yet established. Java loads trajectory
+models through DJL; MR-Moqui currently uses an explicit provider, with `ort` in
+the isolated example. The new obstacle input is an MR-Moqui provider extension.
+Rust's `/api/trajectory/export` is an additional endpoint absent from the reviewed
+Java gateway branch. Advanced OPC UA security and arbitrary Camel route options
+are not implemented by the Rust gateway; see its branch documentation. Existing
+protocol tests validate specific contracts, not every Java integration option.

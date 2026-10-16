@@ -1,0 +1,16 @@
+[package]
+name = "moqui-onnx-obstacle-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Optional, independently built example; not a framework/component dependency.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "load-dynamic"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
