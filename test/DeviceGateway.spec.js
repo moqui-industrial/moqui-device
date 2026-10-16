@@ -5,6 +5,42 @@ spec({
     cleanup() { ec.artifactExecution.enableAuthz(); },
 });
 
+feature("native Rust ONNX service replans and persists without an HTTP provider", {
+    ignore: !System.getProperty("trajectory_native_test"),
+    when() {
+        const parameters = {mathModelId:"DemoObstacleCorridorV1", onnxProfile:"corridor13",
+            startPose:[0,0,0,0,0,0], goalPose:[1,0,0,0,0,0]};
+        const before = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner",parameters);
+        parameters.obstacle = {center:[0.5,0,0], radius:0.12, margin:0.08, coordinateFrame:"demo-tcp-metres"};
+        const after = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner",parameters);
+        const middleY = (id) => {
+            const sample = ec.entity.find("moqui.math.ApproximatedFunctionSample").condition("approximatedFunctionId",id).condition("sampleCode","WP0005").one();
+            return ec.entity.find("moqui.math.VectorComponent").condition("vectorId",sample.sampleVectorId).condition("dimensionIndex",1).one().realValue.toNumber();
+        };
+        return {beforeY:middleY(before.approximatedFunctionId), afterY:middleY(after.approximatedFunctionId),
+            run:ec.entity.find("moqui.math.MathModelRun").condition("mathModelRunId",after.mathModelRunId).one()};
+    },
+    then(out) {
+        Math.abs(out.beforeY) < 0.00001;
+        Math.abs(out.afterY - 0.20) < 0.00001;
+        JSON.parse(out.run.parameters).plannerMode == "native";
+        out.run.hasError == "N";
+    },
+});
+
+feature("native Rust ONNX service accepts the Java twelve-input contract", {
+    ignore: !System.getProperty("trajectory_native_test"),
+    when() {
+        return call("moqui.device.OnnxServices.infer#TrajectoryWaypoints", {
+            mathModelId:"DemoTcp12V1", startPose:[0,0,0,0,0,0], goalPose:[1,0,0,0,0,0],
+        });
+    },
+    then(out) {
+        out.waypoints.length == 11;
+        Math.abs(out.waypoints[5][0] - 0.5) < 0.00001;
+    },
+});
+
 feature("the canonical gateway scenario and HVAC whitelist load", {
     when() {
         return {
@@ -129,7 +165,7 @@ feature("remote trajectory planning persists provider waypoints", {
     ignore: !System.getProperty("gateway_test_url"),
     when() {
         const output = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", {
-            mathModelId:"TrjPlannerMlp6DofV1", inferenceUrl:System.getProperty("gateway_test_url") + "/plan",
+            plannerMode:"remote", mathModelId:"TrjPlannerMlp6DofV1", inferenceUrl:System.getProperty("gateway_test_url") + "/plan",
             startPose:[0,0,0,0,0,0], goalPose:[1,2,3,0,0,0],
         });
         return { output, samples:ec.entity.find("moqui.math.ApproximatedFunctionSample").condition("approximatedFunctionId",output.approximatedFunctionId).count() };
@@ -161,7 +197,7 @@ feature("actual Rust ONNX obstacle replanning persists the changed trajectory", 
     ignore: !System.getProperty("trajectory_onnx_test_url"),
     when() {
         const parameters = {
-            mathModelId:"DemoObstacleCorridorV1", inferenceUrl:System.getProperty("trajectory_onnx_test_url") + "/plan",
+            plannerMode:"remote", mathModelId:"DemoObstacleCorridorV1", inferenceUrl:System.getProperty("trajectory_onnx_test_url") + "/plan",
             startPose:[0,0,0,0,0,0], goalPose:[1,0,0,0,0,0],
         };
         const before = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", parameters);

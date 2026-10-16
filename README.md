@@ -2,7 +2,7 @@
 
 This `mr-moqui` branch targets [MR-Moqui master](https://github.com/moqui/mr-moqui).
 Install `moqui-math` with this component; see [MR-Moqui setup](#mr-moqui-branch).
-`mantle-udm` is optional and is needed only for the canonical test data.
+`mantle-udm` is optional and is needed only for the additional Mantle telemetry test fixture.
 
 [![license](http://img.shields.io/badge/license-CC0%201.0%20Universal-blue.svg)](https://github.com/moqui/moqui-device/blob/master/LICENSE.md)
 
@@ -424,15 +424,16 @@ or external providers for control algorithms and model inference.
 
 `moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` persists
 six-dimensional TCP poses `[X,Y,Z,A,B,C]` in the math model. In this Rust-framework
-branch, `plannerMode=remote` calls an explicit HTTP inference provider configured
-with `inferenceUrl`; `plannerMode=linear-demo` generates ten interpolated poses
-only when requested. Neither mode establishes collision avoidance, kinematic
-feasibility, or physical execution by a PLC.
+branch, default `plannerMode=native` loads ONNX in-process through the optional
+Rust service. `plannerMode=remote` explicitly delegates to `inferenceUrl`;
+`plannerMode=linear-demo` generates ten interpolated poses only when requested.
+These examples do not establish general collision avoidance, kinematic feasibility
+or physical execution by a PLC.
 
 The training script and the Gradle/DJL dependencies in this repository describe
 the Java ONNX example. MR-Moqui does not load those JVM libraries. A trained
-model must match the TCP pose contract and run in the configured provider; the
-port never silently substitutes interpolation for inference.
+model must match the selected TCP tensor contract. Native and remote inference
+never silently substitute interpolation.
 
 ### Data modelling
 
@@ -465,10 +466,10 @@ MathModelDef ──► MathModel ──► MathModelRun ──► MathModelPerf
 | `MathModelDef` (`TrjPlannerMlp6Dof`) | Blueprint: model type, service name, version |
 | `MathModel` (`TrjPlannerMlp6DofV1`) | Versioned production instance; governed by `MathModelStatusFlow` |
 | `MathModelDefContent` | Points to the ONNX file via `component://moqui-device/data/ml/trajectory_planner.onnx` |
-| `MathModelRun` | Nontransactional execution record; survives TX rollback; stores input parameters as JSON and output summary |
-| `MathModelPerf` | Performance counters: `totalDurationSec` (end-to-end), `inferenceLatencyMs` (provider call or explicit demo generation), `throughputSamplesSec` |
+| `MathModelRun` | Execution record storing input parameters as JSON and output summary; datasource configuration governs transaction isolation |
+| `MathModelPerf` | Performance counters: `totalDurationSec` (end-to-end), `inferenceLatencyMs` (native inference, provider call or explicit demo generation), `throughputSamplesSec` |
 | `MathModelData` | Three rows per run: output `ApproximatedFunction` + input `Vector` for startPose and goalPose |
-| `ApproximatedFunction` | The trajectory container; `vectorSpaceEnumId = EngJointSpace6Dof` (6-DOF revolute joint space) |
+| `ApproximatedFunction` | The trajectory container; `vectorSpaceEnumId = EngTcpPose6Dof` (tool center point pose space) |
 | `ParametricPath` | Path-level metadata; `profileEnumId = PppfTrajectoryProfile` |
 | `Trajectory` | Time-tagged motion; `controlMethodEnumId = PtcmNNControl` |
 | `ApproximatedFunctionSample` (×10) | One per waypoint (WP0000–WP0009); start, waypoint, end type |
@@ -483,14 +484,15 @@ The `MathModel` lifecycle is governed by `MathModelStatusFlow`
 `MathModelRun` record that captures:
 
 - `startTime` / `endDate` — wall-clock span
-- `parameters` — JSON snapshot of `startPose`, `goalPose` and `plannerMode`
+- `parameters` — JSON snapshot of start/goal poses, planner mode, ONNX profile and optional obstacle
 - `results` — JSON summary (`approximatedFunctionId`, `waypointCount`)
-- `hasError` / `errors` — fault isolation without rolling back the parent transaction
+- `hasError` / `errors` — error fields updated before propagating an inference failure; normal transaction rollback still applies
 - `approximatedFunctionId` — direct FK to the output trajectory
 
 `MathModelPerf` records two timing levels: `totalDurationSec` covers the full
-service call including entity persistence; `inferenceLatencyMs` covers the provider call or explicit demo generation, which is the figure relevant to real-time control
-cycle budgets.
+service call including entity persistence; `inferenceLatencyMs` covers the native
+load/inference, provider call or demo generation. Neither timing field establishes
+a hard real-time control cycle budget.
 
 The `MathModelData` snowflake table links the run to all mathematical objects it
 produced or consumed, enabling complete data lineage: given a `MathModelRun` it
@@ -600,8 +602,8 @@ external vision-language-action inference endpoints:
 
 Both services resolve an image from `DeviceContent` associated with a `Device`,
 encode it as base64 through the Moqui resource system, and delegate the real HTTP
-call to a `type="remote-rest"` wrapper service. This keeps the transport contract
-declarative while still letting Moqui validate device/image ownership before any
+call to the component wrapper service, using MR-Moqui's REST client. This keeps the transport contract
+explicit while still letting Moqui validate device/image ownership before any
 remote inference call is made.
 
 ### `run#OpenVla`
@@ -660,17 +662,20 @@ flows together:
 - atomic `DeviceConfig` records for factory defaults and production profiles;
 - `DeviceRuleSet` and `DeviceRule` rows for process/task application;
 - device-scoped `Parameter` values and config-scoped `Parameter` values;
-- observability records for `ParameterLog`, `DeviceLog`, and `Measurement`;
+- observability records for `ParameterLog` and `DeviceLog`, plus optional Mantle `Measurement` telemetry;
 - Grafana-ready `DeviceDashboard` assignments used by the SimpleScreens UI.
 
 This XML file has `type="test"`: ordinary `seed,seed-initial,install` loading
-does not load it. Its WorkEffort and Measurement records require `mantle-udm`
-**only for these tests**, never for normal component use. For this suite, install
-Mantle and temporarily declare `<depends-on name="mantle-udm"/>` in the test
-runtime's `moqui-device/component.xml` so its test data loads after Mantle.
-Restore the ordinary manifest after testing. MR-Moqui's scratch test runner
-loads all data types; for an existing disposable database explicitly load
-`types=test` after the normal seeds. See [test instructions](test/README.md).
+does not load it. The base regression suite and this fixture need only
+moqui-math and moqui-device, including MR-Moqui's scratch test database.
+
+Optional WorkEffort and Measurement telemetry is isolated in
+[`test/mantle/MantleTestData.xml`](test/mantle/MantleTestData.xml), outside `data/`.
+To run tests using those records, install `mantle-udm` and temporarily add
+`<depends-on name="mantle-udm"/>` to the test runtime's component manifest, then
+explicitly load that file after normal seeds and `DeviceTestData.xml`. Restore
+the ordinary manifest after testing. Mantle is never needed for normal use.
+See [test instructions](test/README.md).
 
 This test XML is the reference scenario mirrored by the local SQL fixtures in
 `moqui-device-gateway`. The SQL files may stay transport-oriented for gateway
@@ -766,7 +771,7 @@ The Gradle/JVM/DJL examples above apply to the Java implementation. MR-Moqui
 runs the component's JavaScript/XML services and uses its REST client for gateway
 and inference calls. Gateway API keys are sent in `X-API-Key`; payloads are JSON.
 For the canonical component test suite, follow [test/README.md](test/README.md),
-which describes its additional test-only Mantle setup.
+which describes the optional Mantle telemetry setup.
 
 Binary content is encoded as standard padded base64 without converting bytes
 to UTF-8. A non-success HTTP response stops the operation.
@@ -779,38 +784,59 @@ scope and that `mqttTopic` matches its modeled query.
 
 ### Trajectory planning on MR-Moqui
 
-This branch does not load DJL/JNI or the ONNX file in-process. The default
-`plannerMode=remote` requires `inferenceUrl`, an HTTP JSON provider receiving
-`mathModelId`, `startPose`, `goalPose` and optional `obstacle`, and returning `waypoints` (at least two
-arrays of six finite numeric coordinates). `apiKey` is optional. Failed or
-invalid inference never falls back to interpolation.
+`moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` is the
+invocable Moqui service for inference and trajectory persistence. Its default
+`plannerMode=native` calls the Rust service
+`moqui.device.OnnxServices.infer#TrajectoryWaypoints` **inside the framework
+process**, using `ort` and ONNX Runtime CPU. No HTTP provider is required.
 
-`plannerMode=linear-demo` explicitly generates ten interpolated TCP poses for
-examples and records `AfiLinearPath`. It is not model inference or a verified
-motion planner. The existing ONNX training/Java documentation describes the
-Java implementation; use a configured provider for actual inference here.
+ONNX is optional at build time; ordinary device/configuration/gateway use does
+not acquire an inference runtime dependency. To enable it, from MR-Moqui:
 
-A runnable [isolated Rust ONNX example](examples/onnx-obstacle/README.md) uses
-`ort`/ONNX Runtime to load an exported neural network, then recomputes eleven
-TCP poses after a simulated, calibrated obstacle observation. It includes real
-inference tests, segment clearance checks, a loopback HTTP provider and the
-actual GenICam frame metadata boundary. It requires no Mantle, database, broker
-or camera. Its optional `ModelData.xml` lets the normal service persist the
-results. `linear-demo` rejects obstacles rather than silently ignoring them.
+```bash
+./moq build --debug -- --features moqui-device/onnx
+export ORT_DYLIB_PATH=/absolute/path/to/libonnxruntime.so
+```
+
+Native inference resolves `MathModel` -> `MathModelDefContent` (`MmCntOnnx`) ->
+`contentLocation` through the Moqui resource facade. Use a local or `component://`
+ONNX file; adjacent external tensor data files can be loaded by ONNX Runtime.
+Materialize remote/DB artifacts locally before use. Sessions are loaded per call,
+as in the Java helper; this example does not claim a hard real-time cycle budget.
+Missing features, files or invalid inference produce an error; there is no
+implicit fallback to interpolation or another process.
+
+`onnxProfile=tcp12` is the default and matches the Java/DJL float32 input
+`[1,12]` (start TCP pose followed by goal TCP pose), with an output flattened
+into six-coordinate poses. The isolated example's `corridor13` profile adds a
+calibrated detour clearance input for its obstacle scenario. Existing 12-input
+models reject obstacle observations; they must be extended/retrained to use them.
+
+`plannerMode=remote` remains an explicit alternative: configure `inferenceUrl`
+and optional `apiKey`. Its JSON contract receives `mathModelId`, `startPose`,
+`goalPose` and optional `obstacle`, and returns `waypoints` (at least two arrays
+of six finite numbers). A provider owns its local model configuration.
+`plannerMode=linear-demo` generates ten interpolated TCP poses, records
+`AfiLinearPath` and rejects obstacles. It is not neural inference.
+
+The [isolated Rust ONNX example](examples/onnx-obstacle/README.md) includes real
+inference tests, a small exported network, complete segment clearance checks,
+a simulated GenICam detector boundary, native Moqui calls and an optional loopback
+HTTP provider. It runs without Mantle, camera hardware, a broker or a PLC.
 
 ### Java/Rust compatibility scope
 
 The domain model and service names are shared with the Java/Groovy component.
-MR-Moqui implements the same device configuration, content transfer and trajectory
-persistence contracts using JavaScript/XML. Protocol execution belongs to the
-separate gateway. MQTT v5 is supported by both gateway implementations: Java
-uses Camel/Paho MQTT5 and Rust uses `rumqttc::v5`, including QoS acknowledgement
-and session options. Camel URI syntax is accepted for migration.
+MR-Moqui implements device configuration, content transfer and trajectory
+persistence with JavaScript/XML and native Rust services. Java/DJL and Rust/ort
+both load registered ONNX models in-process using the 12-input TCP contract.
+The new obstacle profile is a separate demonstration, not a replacement for
+an existing trained model. No original Java model binary was available for a
+numerical cross-runtime comparison; the 12-input contract has an exported test fixture.
 
-Full implementation equivalence is not yet established. Java loads trajectory
-models through DJL; MR-Moqui currently uses an explicit provider, with `ort` in
-the isolated example. The new obstacle input is an MR-Moqui provider extension.
-Rust's `/api/trajectory/export` is an additional endpoint absent from the reviewed
-Java gateway branch. Advanced OPC UA security and arbitrary Camel route options
-are not implemented by the Rust gateway; see its branch documentation. Existing
-protocol tests validate specific contracts, not every Java integration option.
+Protocol execution belongs to the separate gateway. MQTT v5 is supported by
+Java's Camel/Paho MQTT5 and Rust's `rumqttc::v5`, including QoS acknowledgements
+and session options. Camel URI syntax is accepted for migration. Full gateway
+parity is not yet established: Rust adds `/api/trajectory/export`, absent from
+the reviewed Java branch, and advanced OPC UA security/arbitrary Camel options
+remain documented limitations in the gateway's branch README.

@@ -51,3 +51,7 @@ Desktop.ini
 
 # Linux auto files
 *~
+
+# Native component build artifacts
+/target/
+/Cargo.lock

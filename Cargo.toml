@@ -1,0 +1,17 @@
+[package]
+name = "moqui-device"
+version = "1.0.0"
+edition = "2024"
+publish = false
+
+[features]
+default = []
+onnx = ["dep:ort", "dep:anyhow", "dep:serde", "dep:serde_json"]
+
+[dependencies]
+moqui-core = { path = "../../../crates/moqui-core", default-features = false }
+moqui-lib = { path = "../../../crates/moqui-lib" }
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "load-dynamic"], optional = true }
+anyhow = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }

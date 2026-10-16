@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Optional telemetry fixture. Requires mantle-udm and DeviceTestData.xml.
+     Explicit load only: kept outside data/ so ordinary and scratch loads do not require Mantle. -->
+<entity-facade-xml type="test">
+    <mantle.work.measurement.MeasurementType
+            measurementTypeId="Latency"
+            description="Latency"
+            hasValue="Y"
+            uomTypeEnumId="UT_TIME_FREQ_MEASURE"/>
+
+    <mantle.work.measurement.MeasurementType
+            measurementTypeId="Power"
+            description="Power"
+            hasValue="Y"
+            uomTypeEnumId="UT_POWER_MEASURE"/>
+
+    <mantle.work.measurement.MeasurementType
+            measurementTypeId="Vibration"
+            description="Vibration"
+            hasValue="Y"
+            uomTypeEnumId=""/>
+
+    <mantle.work.effort.WorkEffort
+            workEffortId="DG_EDGE_01"
+            workEffortTypeEnumId="WetEvent"
+            workEffortName="Cell Group Telemetry Stream"
+            description="Synthetic work effort used to attach telemetry measurements to DG_EDGE_01"/>
+
+    <mantle.work.effort.WorkEffort
+            workEffortId="VIRTUAL_PLC_01"
+            workEffortTypeEnumId="WetEvent"
+            workEffortName="PLC Telemetry Stream"
+            description="Synthetic work effort used to attach telemetry measurements to VIRTUAL_PLC_01"/>
+
+    <mantle.work.effort.WorkEffort
+            workEffortId="DRV_EDGE_01"
+            workEffortTypeEnumId="WetEvent"
+            workEffortName="Drive Telemetry Stream"
+            description="Synthetic work effort used to attach telemetry measurements to DRV_EDGE_01"/>
+
+    <mantle.work.effort.WorkEffort
+            workEffortId="GW_EDGE_01"
+            workEffortTypeEnumId="WetEvent"
+            workEffortName="Gateway Telemetry Stream"
+            description="Synthetic work effort used to attach telemetry measurements to GW_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestCellPower001"
+            measurementTypeId="Power"
+            measurementDate="2026-06-22 10:02:00"
+            measurementValue="8.4"
+            workEffortId="DG_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestCellPower002"
+            measurementTypeId="Power"
+            measurementDate="2026-06-28 10:08:00"
+            measurementValue="9.1"
+            workEffortId="DG_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestPlcTemp001"
+            measurementTypeId="Temperature"
+            measurementDate="2026-06-22 09:01:00"
+            measurementValue="37.1"
+            workEffortId="VIRTUAL_PLC_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestPlcTemp002"
+            measurementTypeId="Temperature"
+            measurementDate="2026-06-28 12:11:00"
+            measurementValue="38.3"
+            workEffortId="VIRTUAL_PLC_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestPlcVibration001"
+            measurementTypeId="Vibration"
+            measurementDate="2026-06-24 09:07:00"
+            measurementValue="0.55"
+            workEffortId="VIRTUAL_PLC_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestPlcVibration002"
+            measurementTypeId="Vibration"
+            measurementDate="2026-06-28 12:17:00"
+            measurementValue="0.48"
+            workEffortId="VIRTUAL_PLC_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestDrivePower001"
+            measurementTypeId="Power"
+            measurementDate="2026-06-22 08:03:00"
+            measurementValue="4.2"
+            workEffortId="DRV_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestDrivePower002"
+            measurementTypeId="Power"
+            measurementDate="2026-06-28 10:13:00"
+            measurementValue="4.8"
+            workEffortId="DRV_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestDriveTemp001"
+            measurementTypeId="Temperature"
+            measurementDate="2026-06-24 08:09:00"
+            measurementValue="44.6"
+            workEffortId="DRV_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestDriveTemp002"
+            measurementTypeId="Temperature"
+            measurementDate="2026-06-28 10:19:00"
+            measurementValue="46.1"
+            workEffortId="DRV_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestGatewayHumidity001"
+            measurementTypeId="Humidity"
+            measurementDate="2026-06-22 07:34:00"
+            measurementValue="55"
+            workEffortId="GW_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestGatewayHumidity002"
+            measurementTypeId="Humidity"
+            measurementDate="2026-06-28 10:14:00"
+            measurementValue="57"
+            workEffortId="GW_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestGatewayLatency001"
+            measurementTypeId="Latency"
+            measurementDate="2026-06-25 08:10:00"
+            measurementValue="142"
+            workEffortId="GW_EDGE_01"/>
+
+    <mantle.work.measurement.Measurement
+            measurementId="TestGatewayLatency002"
+            measurementTypeId="Latency"
+            measurementDate="2026-06-28 10:20:00"
+            measurementValue="95"
+            workEffortId="GW_EDGE_01"/>
+</entity-facade-xml>

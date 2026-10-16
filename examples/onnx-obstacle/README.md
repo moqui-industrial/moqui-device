@@ -3,7 +3,8 @@
 This example loads a real ONNX neural network with Rust `ort` and ONNX Runtime
 on the CPU. It is an independent Cargo workspace: no Moqui installation,
 Mantle, database, MQTT broker, camera SDK or PLC is needed to run its tests.
-Its HTTP endpoint also implements the MR-Moqui trajectory provider contract.
+The same inference source is also used by the optional native Moqui service.
+Its HTTP endpoint remains available for an explicitly remote deployment.
 
 The network uses 13 inputs (start TCP pose, goal TCP pose, detour clearance),
 a fixed 26-unit ReLU feature layer and a fitted 66-output layer. `train.py`
@@ -79,7 +80,7 @@ it does not model robot links, tool volume, joint limits or acceleration limits.
 Do not send its outputs to a physical controller as a commissioned motion plan.
 The loopback-only HTTP server has no production authentication layer.
 
-## Calling from MR-Moqui (optional, still no Mantle required)
+## Calling from MR-Moqui natively (optional, no Mantle required)
 
 Install only `moqui-math` and `moqui-device`, load their ordinary seeds, then
 explicitly register this example from the MR-Moqui framework root:
@@ -88,31 +89,50 @@ explicitly register this example from the MR-Moqui framework root:
 ./moq load --debug types=test location=runtime/component/moqui-device/examples/onnx-obstacle/ModelData.xml
 ```
 
-With the Rust provider running, call the existing service from a server-side
-JavaScript action:
+Build the framework with the optional component feature (the component must be
+installed under `runtime/component/moqui-device`) and set the runtime library:
+
+```bash
+./moq build --debug -- --features moqui-device/onnx
+export ORT_DYLIB_PATH=/absolute/path/to/libonnxruntime.so
+```
+
+Call the existing service from a server-side JavaScript action. No provider
+process or HTTP URL is needed:
 
 ```javascript
 const result = ec.service.sync()
     .name("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner")
     .parameters({
         mathModelId: "DemoObstacleCorridorV1",
-        inferenceUrl: "http://127.0.0.1:18092/plan",
+        onnxProfile: "corridor13",
         startPose: [0,0,0,0,0,0], goalPose: [1,0,0,0,0,0],
         obstacle: {center:[0.5,0,0], radius:0.12, margin:0.08,
                    coordinateFrame:"demo-tcp-metres"}
     }).call();
 ```
 
-The service records the obstacle in `MathModelRun.parameters` and persists the
-returned poses in the normal trajectory entities. The provider's model ID is
-fixed, and its local file is explicitly configured; `contentLocation` is model
-metadata, not an automatically mounted path on a different host. Existing
-12-input trajectory models cannot consume the additional clearance feature.
-The base component does not acquire an `ort` dependency or load DJL/JNI.
+The default `plannerMode=native` invokes
+`moqui.device.OnnxServices.infer#TrajectoryWaypoints` in the framework process.
+The helper is also directly invocable to obtain waypoints without persistence.
+It resolves `MathModelDefContent.contentLocation` with the Moqui resource facade
+and loads its local/component file, including adjacent external tensor files.
+The main planner records the obstacle in `MathModelRun.parameters` and persists
+the returned poses in the normal trajectory entities.
+
+The `onnx` Cargo feature is disabled by default; ordinary device use needs neither
+ONNX Runtime nor Mantle. A build without it returns a clear error if native
+inference is requested. `ort` dynamically loads the shared library on first use.
+Java/DJL classes are not used.
+
+For the separate HTTP provider shown above, explicitly set `plannerMode:"remote"`
+and `inferenceUrl:"http://127.0.0.1:18092/plan"` in the Moqui call. That provider
+owns its model path; a component URI is not automatically mounted on another host.
 
 ## Existing Java/DJL trajectory models
 
-The same Rust provider can load an existing float32 ONNX trajectory model with
+Both native mode (`onnxProfile=tcp12`, the default) and the optional Rust
+provider can load an existing float32 ONNX trajectory model with
 the Java service's `[1,12]` input (`startPose` followed by `goalPose`). It uses
 the model's first input/output names and flattens the output into six-coordinate
 TCP poses, matching the Java `TrajectoryGenerator` contract:
@@ -130,3 +150,11 @@ the installed runtime. `train.py` also exports `tcp12.onnx`, an independent test
 fixture for this tensor contract; it is not the original Java-trained artifact.
 The tests exercise both 12-input and 13-input inference. For the obstacle demo,
 unset these three variables before starting the server again.
+
+To execute only the native integration features in a loaded disposable database:
+
+```bash
+trajectory_native_test=true ./moq test --debug moqui-device --db existing --feature 'native Rust ONNX'
+```
+
+Keep `ORT_DYLIB_PATH` set. No HTTP fixture is used by these features.

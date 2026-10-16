@@ -24,3 +24,16 @@ exported `tcp12.onnx` fixture. No camera image recognition, physical PLC executi
 robot kinematics or production OPC UA security commissioning was performed.
 The example does not claim full Java/Rust parity; remaining gateway differences
 are documented in the branch READMEs.
+
+
+Native-service follow-up: the default planner now calls the optional Rust
+`infer#TrajectoryWaypoints` service in the framework process. It resolves the
+registered component/local ONNX path; no HTTP provider is involved in the two
+native integration features. Both the 12-input and obstacle profiles passed.
+The optional example registration now loads six records (two models).
+The 21 Mantle telemetry records have moved outside automatic data discovery to
+`test/mantle/MantleTestData.xml`; the base fixture loads 176 records without Mantle.
+The combined moqui-device/GenICam suite passed all 18 features without Mantle
+with every optional provider/native feature enabled. Native-feature-disabled compilation and native
+feature compilation/Clippy were checked separately. See the GenICam validation
+record for its worker, binary, persistence and retention checks.

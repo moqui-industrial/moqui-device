@@ -12,4 +12,11 @@
         contentLocation="component://moqui-device/examples/onnx-obstacle/model.onnx"/>
     <moqui.math.MathModel mathModelId="DemoObstacleCorridorV1" mathModelDefId="DemoObstacleCorridor"
         sourceEnumId="MmsSimulated" modelAlias="demo-obstacle-corridor"/>
+    <moqui.math.MathModelDef mathModelDefId="DemoTcp12" modelTypeEnumId="MmtDlFeedforward"
+        usageContextEnumId="MmucInference" domainEnumId="MmdEngineering"
+        modelName="Java-compatible twelve-input ONNX test fixture" versionNumber="1"/>
+    <moqui.math.MathModelDefContent mathModelDefContentId="DemoTcp12Onnx" mathModelDefId="DemoTcp12"
+        contentTypeEnumId="MmCntOnnx" purposeEnumId="MmCnpMainLogic"
+        contentLocation="component://moqui-device/examples/onnx-obstacle/tcp12.onnx"/>
+    <moqui.math.MathModel mathModelId="DemoTcp12V1" mathModelDefId="DemoTcp12" sourceEnumId="MmsSimulated"/>
 </entity-facade-xml>

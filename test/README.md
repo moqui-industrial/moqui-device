@@ -1,19 +1,23 @@
-Run from the MR-Moqui framework root with this component, moqui-math and
-mantle-udm installed **for this suite only**. Normal use of moqui-device requires
-only moqui-math. The canonical `data/DeviceTestData.xml` is `type="test"` and
-contains Mantle WorkEffort/Measurement records. In the test runtime, temporarily
-add this dependency to `moqui-device/component.xml` to establish load order:
-
-```xml
-<depends-on name="mantle-udm"/>
-```
-
-Restore the production manifest after testing. The default scratch database loads
-all data types, including `test`:
+Run from the MR-Moqui framework root with this component and moqui-math installed.
+Mantle is not required for the base regression suite. `data/DeviceTestData.xml`
+is `type="test"` and is loaded by the scratch test runner, not ordinary seed loading.
 
 ```bash
 ./moq test --debug moqui-device
 ```
+
+Optional Mantle WorkEffort/Measurement records are in `test/mantle/MantleTestData.xml`,
+outside automatic data discovery. Tests needing that telemetry require installing
+mantle-udm and temporarily adding `<depends-on name="mantle-udm"/>` to the test
+runtime's moqui-device/component.xml. After normal seeds and base test data, load
+that file explicitly:
+
+```bash
+./moq load --debug types=test location=runtime/component/moqui-device/test/mantle/MantleTestData.xml
+```
+
+Restore the ordinary manifest after testing. Mantle remains optional for users
+who do not run these telemetry scenarios.
 
 The normal tests use the test runner's scratch database. Two HTTP contract
 features require a loopback fixture server, started from the component root:
@@ -54,3 +58,14 @@ just moqui-math and moqui-device (no Mantle), load ordinary seeds and the exampl
 trajectory_onnx_test_url=http://127.0.0.1:18092 \
   ./moq test --debug moqui-device --db existing --feature 'actual Rust ONNX'
 ```
+
+The native ONNX features require the optional `moqui-device/onnx` build feature,
+`ORT_DYLIB_PATH`, and the example's `ModelData.xml`. Run them without any HTTP
+provider or Mantle in a disposable runtime containing only moqui-math/moqui-device:
+
+```bash
+trajectory_native_test=true ./moq test --debug moqui-device --db existing --feature 'native Rust ONNX'
+```
+
+The full suite enables both native and optional remote checks when both sets
+of environment variables are configured.

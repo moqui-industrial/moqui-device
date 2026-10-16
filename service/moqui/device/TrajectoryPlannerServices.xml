@@ -373,7 +373,7 @@ along with this software (see the LICENSE.md file). If not, see
 
     <service verb="run" noun="RobotArmTrajectoryPlanner">
         <description>
-            Run a 6-DOF TCP waypoint planner through a configured HTTP inference provider.
+            Run a 6-DOF TCP waypoint planner with native ONNX Runtime, or an explicitly configured remote provider.
             MR-Moqui does not load DJL/JNI. The explicit linear-demo mode only interpolates endpoints.
 
             The model accepts [tcp_start(6) || tcp_goal(6)] (12 inputs) and produces
@@ -393,10 +393,9 @@ along with this software (see the LICENSE.md file). If not, see
                 MathModelPerf                   — latency / throughput counters
                 MathModelData                   — links model to trajectory + input vectors
 
-            On MR-Moqui an explicit inference provider owns ONNX loading. The
-            MathModelDefContent record describes the model artifact; its URI is
-            not a path on the provider host. Configure the provider's local file
-            and matching mathModelId. Optional obstacle data is provider-specific
+            Native mode loads MathModelDefContent.contentLocation through the Moqui
+            resource facade as a local/component file. Remote mode delegates model
+            loading to an explicitly configured provider. Optional obstacle data is provider-specific
             and must use calibrated world coordinates, not image pixels.
         </description>
         <in-parameters>
@@ -409,9 +408,10 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="goalPose" type="List" required="true">
                 <description>6 TCP pose values [X,Y,Z,A,B,C] — goal pose in the same space used by the PLC.</description>
             </parameter>
-            <parameter name="plannerMode" default-value="remote">
-                <description>remote requires inferenceUrl; linear-demo is explicit interpolation for examples only.</description>
+            <parameter name="plannerMode" default-value="native">
+                <description>native loads the registered ONNX artifact in-process; remote requires inferenceUrl; linear-demo is explicit interpolation only.</description>
             </parameter>
+            <parameter name="onnxProfile" default-value="tcp12"/>
             <parameter name="inferenceUrl"/>
             <parameter name="apiKey"/>
             <parameter name="obstacle" type="Map">
@@ -469,8 +469,8 @@ along with this software (see the LICENSE.md file). If not, see
                 goalPoseList = normalizePose(goalPose, "goalPose");
                 if (!startPoseList || !goalPoseList) return;
 
-                if (plannerMode !== "linear-demo" && plannerMode !== "remote") {
-                    ec.message.addError("plannerMode must be remote or linear-demo."); return;
+                if (plannerMode !== "linear-demo" && plannerMode !== "remote" && plannerMode !== "native") {
+                    ec.message.addError("plannerMode must be native, remote or linear-demo."); return;
                 }
                 if (plannerMode === "remote" && !inferenceUrl) {
                     ec.message.addError("MR-Moqui requires inferenceUrl for model inference. Use plannerMode=linear-demo only for explicit interpolation examples."); return;
@@ -478,7 +478,7 @@ along with this software (see the LICENSE.md file). If not, see
                 if (plannerMode === "linear-demo" && obstacle) {
                     ec.message.addError("linear-demo cannot plan around obstacles; configure an inference provider."); return;
                 }
-                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList, plannerMode: plannerMode, obstacle: obstacle || null });
+                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList, plannerMode: plannerMode, onnxProfile: onnxProfile, obstacle: obstacle || null });
                 trajectoryLabel = trajectoryName || null;
             ]]></script>
 
@@ -500,6 +500,12 @@ along with this software (see the LICENSE.md file). If not, see
                         for (let i = 0; i < 10; i++) {
                             waypoints.push(startPoseList.map((v, j) => v + (i / 9) * (goalPoseList[j] - v)));
                         }
+                    } else if (plannerMode === "native") {
+                        const output = ec.service.sync().name("moqui.device.OnnxServices.infer#TrajectoryWaypoints")
+                            .parameters({mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList,
+                                onnxProfile: onnxProfile, obstacle: obstacle || null}).call();
+                        if (ec.message.hasError()) throw new Error("Native ONNX inference returned an error.");
+                        waypoints = output.waypoints;
                     } else {
                         const inferencePayload = {mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList};
                         if (obstacle) inferencePayload.obstacle = obstacle;
