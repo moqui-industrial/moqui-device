@@ -15,6 +15,34 @@ along with this software (see the LICENSE.md file). If not, see
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
+    <service verb="call" noun="InferenceEndpoint">
+        <description>
+            Posts a JSON body to an inference provider (OpenVLA, a remote trajectory planner) and returns the JSON
+            response. The provider key goes in the X-API-Key header, never in the body or the URL. A remote-rest
+            service cannot set that header, so the call uses ec.service.rest().
+        </description>
+        <in-parameters>
+            <parameter name="url" required="true"/>
+            <parameter name="apiKey"/>
+            <parameter name="payload" type="Map"/>
+            <parameter name="timeout" type="Integer" default-value="30"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="response" type="Map"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            const client = ec.service.rest().uri(url).method("POST")
+                .contentType("application/json").jsonObject(payload || {}).timeout(timeout || 30);
+            if (apiKey) client.addHeader("X-API-Key", apiKey);
+            const result = client.call();
+            if (result.statusCode < 200 || result.statusCode >= 300) {
+                ec.message.addError(`Inference provider returned HTTP ${result.statusCode}.`);
+                return;
+            }
+            response = result.jsonObject();
+        ]]></script></actions>
+    </service>
+
     <service verb="call" noun="OpenVla">
         <description>
             Calls the OpenVLA REST endpoint and returns the predicted robot action.
@@ -34,7 +62,7 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="unnormKey"/>
         </out-parameters>
         <actions><script><![CDATA[
-            const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+            const output = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint")
                 .parameters({url: openVlaLocation, apiKey: apiKey, payload: {instruction: instruction, image_base64: image_base64, unnorm_key: unnorm_key, do_sample: do_sample}}).call();
             if (ec.message.hasError()) return;
             const data = output.response || {};
@@ -67,7 +95,7 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="modelId"/>
         </out-parameters>
         <actions><script><![CDATA[
-            const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+            const output = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint")
                 .parameters({url: openVlaLocation, apiKey: apiKey, payload: {instruction: instruction, image_base64: image_base64, return_target_pose: return_target_pose, target_pose_dimension: target_pose_dimension}}).call();
             if (ec.message.hasError()) return;
             const data = output.response || {};
@@ -84,7 +112,7 @@ along with this software (see the LICENSE.md file). If not, see
     <service verb="run" noun="OpenVla">
         <description>
             Resolves a device image from DeviceContent and delegates the inference call
-            to OpenVLA through the remote-rest service wrapper.
+            to OpenVLA through call#OpenVla.
         </description>
         <in-parameters>
             <parameter name="deviceId" required="true"/>
@@ -509,7 +537,7 @@ along with this software (see the LICENSE.md file). If not, see
                     } else {
                         const inferencePayload = {mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList};
                         if (obstacle) inferencePayload.obstacle = obstacle;
-                        const output = ec.service.sync().name("moqui.device.DeviceGatewayServices.call#GatewayEndpoint")
+                        const output = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint")
                             .parameters({url: inferenceUrl, apiKey: apiKey, payload: inferencePayload}).call();
                         if (ec.message.hasError()) throw new Error("Inference provider returned an error.");
                         waypoints = output.response?.waypoints;
@@ -667,5 +695,95 @@ along with this software (see the LICENSE.md file). If not, see
             <set field="mathModelRunId" from="runId"/>
             <set field="mathModelPerfId" from="perfValue.mathModelPerfId"/>
         </actions>
+    </service>
+
+    <service verb="get" noun="TrajectoryAxes">
+        <description>
+            Reads the waypoints of a planned trajectory (ApproximatedFunctionSample in sequenceNum order, each with its
+            VectorComponent values) and returns one value list per axis. Axis names follow the vector space of the
+            ApproximatedFunction: X,Y,Z,A,B,C for EngTcpPose6Dof, J1..J6 otherwise; a dimension beyond the sixth is
+            named D and its index. TrajectoryAxisBinding is not used: this is the planned waypoint stream as it is.
+        </description>
+        <in-parameters>
+            <parameter name="approximatedFunctionId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="axes" type="Map"/>
+            <parameter name="waypointCount" type="Integer"/>
+            <parameter name="vectorSpaceEnumId"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            const samples = ec.entity.find("moqui.math.ApproximatedFunctionSample")
+                .condition("approximatedFunctionId", approximatedFunctionId).orderBy("sequenceNum").list();
+            if (!samples || samples.length === 0) {
+                ec.message.addError(`No ApproximatedFunctionSample found for approximatedFunctionId ${approximatedFunctionId}.`);
+                return;
+            }
+            const approxFunc = ec.entity.find("moqui.math.ApproximatedFunction")
+                .condition("approximatedFunctionId", approximatedFunctionId).one();
+            vectorSpaceEnumId = approxFunc?.vectorSpaceEnumId || null;
+            const axisNames = vectorSpaceEnumId === 'EngTcpPose6Dof' ?
+                ['X', 'Y', 'Z', 'A', 'B', 'C'] : ['J1', 'J2', 'J3', 'J4', 'J5', 'J6'];
+            // a decimal field is a Decimal object in the script: toNumber() reads it
+            const toNumber = (value) => value != null && typeof value.toNumber === 'function' ? value.toNumber() : Number(value);
+            axes = {};
+            for (const sample of samples) {
+                const components = ec.entity.find("moqui.math.VectorComponent")
+                    .condition("vectorId", sample.sampleVectorId).orderBy("dimensionIndex").list();
+                for (const comp of (components || [])) {
+                    const dim = parseInt(comp.dimensionIndex, 10);
+                    const axisKey = dim < axisNames.length ? axisNames[dim] : `D${dim}`;
+                    if (!axes[axisKey]) axes[axisKey] = [];
+                    axes[axisKey].push(toNumber(comp.realValue));
+                }
+            }
+            waypointCount = samples.length;
+        ]]></script></actions>
+    </service>
+
+    <service verb="export" noun="Trajectory" authenticate="false" transaction="ignore">
+        <description>
+            Publishes a planned trajectory for immediate execution (the ephemeral path; a recipe export through
+            moqui.device.DeviceConfigServices.export#DeviceConfig is the persistent one). The axis values come from
+            get#TrajectoryAxes and go out as one JSON message through run#DeviceRequest: the DeviceRequest is an MQTT
+            write without items (requestTypeEnumId DrtWrite, runServiceName
+            moqui.device.gateway.MqttServices.run#DeviceRequest, brokerUri the broker, query the topic that
+            MqttParameterSub on the PLC subscribes to).
+
+            Message:
+                {"requestName": "ROBOT_ARM_TRAJECTORY_EXPORT", "approximatedFunctionId": "100051",
+                 "waypointCount": 10, "mqttTopic": "moqui/robot/arm1/trajectory",
+                 "axes": {"X": [850.0, 860.0], "Y": [0.0, 20.0]}}
+        </description>
+        <in-parameters>
+            <parameter name="approximatedFunctionId" required="true"/>
+            <parameter name="requestName" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            const dr = ec.entity.find("moqui.device.DeviceRequest").condition("requestName", requestName).one();
+            if (!dr) {
+                ec.message.addError(`DeviceRequest ${requestName} not found.`);
+                return;
+            }
+            const trajectory = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes")
+                .parameters({approximatedFunctionId: approximatedFunctionId}).call();
+            if (ec.message.hasError()) return;
+            const payload = {
+                requestName: requestName,
+                approximatedFunctionId: approximatedFunctionId,
+                waypointCount: trajectory.waypointCount,
+                mqttTopic: dr.query || '',
+                axes: trajectory.axes
+            };
+            ec.logger.info(`Exporting trajectory ${approximatedFunctionId} (${trajectory.waypointCount} waypoints) with request ${requestName}`);
+            const result = ec.service.sync().name("moqui.device.DeviceServices.run#DeviceRequest")
+                .parameters({requestName: requestName, payload: payload}).call();
+            status = result?.status;
+            errorMessage = result?.errorMessage;
+        ]]></script></actions>
     </service>
 </services>

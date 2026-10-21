@@ -778,7 +778,7 @@ along with this software (see the LICENSE.md file). If not, see
             typeString="${typeString}" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="N" emailTemplateId="NOTIFICATION"
             titleTemplate="Device Group ${deviceGroup.groupName||''} [${deviceGroup.deviceId}] ${typeString} - ${message||'N/A'}"
             linkTemplate="/qapps/system/Device/DeviceGroups/DeviceGroupDetail?deviceId=${deviceGroup.deviceId}"/>
-    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequest" description="Device Gateway Request Notifications"
+    <moqui.security.user.NotificationTopic topic="DeviceRequestResult" description="Device Request Result Notifications"
             typeString="${typeString}" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="N"
-            titleTemplate="${titleText || message || 'Device gateway notification'}"/>
+            titleTemplate="${titleText || message || 'Device request result'}"/>
 </entity-facade-xml>

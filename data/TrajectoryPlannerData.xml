@@ -55,30 +55,29 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.basic.EnumGroupMember enumId="DimTcpB" enumGroupEnumId="EngTcpPose6Dof" sequenceNum="5"/>
     <moqui.basic.EnumGroupMember enumId="DimTcpC" enumGroupEnumId="EngTcpPose6Dof" sequenceNum="6"/>
 
-    <!-- ========== Gateway device + DeviceRequest for export#Trajectory ========== -->
+    <!-- ========== Robot controller + DeviceRequest for export#Trajectory ========== -->
     <!--
-        Minimal records needed to test moqui.device.DeviceGatewayServices.export#Trajectory.
-        Replace brokerUri with the actual gateway address in production.
-        The MQTT topic in DeviceRequest.query must match the MqttParameterSub subscription
-        on the PLC side (JsonToParametersMapper expected keys: "X","Y","Z","A","B","C"
+        Minimal records needed to test moqui.device.TrajectoryPlannerServices.export#Trajectory.
+        The request is an MQTT write without items, run by moqui-device-gateway: replace brokerUri with the
+        actual broker in production. The MQTT topic in DeviceRequest.query must match the MqttParameterSub
+        subscription on the PLC side (JsonToParametersMapper expected keys: "X","Y","Z","A","B","C"
         for TCP pose trajectories, or "J1"…"J6" for joint-space trajectories).
     -->
-    <moqui.device.Device deviceId="moqui-device-gateway1"
-        deviceTypeEnumId="DtServer"/>
-    <moqui.device.PhysicalDevice deviceId="moqui-device-gateway1"
-        deviceName="Moqui Device Gateway 1"
-        vendorName="Moqui"
-        modelName="Trajectory Gateway"
-        softwareApplication="Moqui Device Gateway"/>
+    <moqui.device.Device deviceId="ROBOT_ARM_01"
+        deviceTypeEnumId="DtRobotController"/>
+    <moqui.device.PhysicalDevice deviceId="ROBOT_ARM_01"
+        deviceName="Robot Arm 1"
+        modelName="6-DOF Robot Arm Controller"/>
 
     <moqui.device.DeviceRequest requestName="ROBOT_ARM_TRAJECTORY_EXPORT"
-        deviceId="moqui-device-gateway1"
-        routerEnumId="DrrMoquiDeviceGateway"
+        deviceId="ROBOT_ARM_01"
+        routerEnumId="DrrMQTTBroker"
         requestTypeEnumId="DrtWrite"
-        brokerUri="http://localhost:8081"
+        runServiceName="moqui.device.gateway.MqttServices.run#DeviceRequest"
+        brokerUri="mqtt://localhost:1883"
         query="moqui/robot/arm1/trajectory"
-        timeout="30"
-        description="Exports 6-DOF robot arm trajectory waypoints to moqui-device-gateway for MQTT publishing (ephemeral bulk path)."/>
+        timeout="30000"
+        description="Publishes 6-DOF robot arm trajectory waypoints over MQTT (ephemeral bulk path)."/>
 
     <!-- ========== MathModelDef: 6-DOF TCP waypoint planner ========== -->
     <!-- 

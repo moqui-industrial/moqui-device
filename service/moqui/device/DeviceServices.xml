@@ -44,21 +44,17 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
     </service>
 
-    <service verb="receive" noun="GatewayRequestCallback" authenticate="false" allow-remote="true" transaction="ignore">
+    <service verb="notify" noun="DeviceRequestResult">
         <description>
-            Receives gateway-side success or failure callbacks for device request execution
-            and translates them into user-facing Moqui notifications.
+            Tells the user the result of a device request that changes a device: a parameter write, a recipe export
+            or a content transfer. Called by run#DeviceRequest after the request ran.
         </description>
         <in-parameters>
-            <parameter name="eventType" required="true"/>
             <parameter name="requestName" required="true"/>
-            <parameter name="deviceId"/>
             <parameter name="status"/>
-            <parameter name="protocol"/>
-            <parameter name="routeId"/>
-            <parameter name="rowCount" type="Integer"/>
-            <parameter name="message"/>
-            <parameter name="publishUriList" type="List"/>
+            <parameter name="itemCount" type="Integer"/>
+            <parameter name="fileCount" type="Integer"/>
+            <parameter name="errorMessage"/>
         </in-parameters>
         <actions>
             <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request">
@@ -67,7 +63,6 @@ along with this software (see the LICENSE.md file). If not, see
             <if condition="request == null">
                 <return error="true" message="DeviceRequest not found for requestName ${requestName}."/>
             </if>
-
             <entity-find-one entity-name="moqui.device.DeviceDetail" value-field="device">
                 <field-map field-name="deviceId" from="request.deviceId"/>
             </entity-find-one>
@@ -75,35 +70,32 @@ along with this software (see the LICENSE.md file). If not, see
                 <return error="true" message="Device not found for request ${requestName}."/>
             </if>
 
-            <set field="notificationTopic" value="DeviceGatewayRequest"/>
-            <set field="notificationType" value="info"/>
-            <set field="notificationTitle" from="'Gateway callback for ' + (device.deviceName || device.deviceId)"/>
-            <set field="notificationMessage" from="message || ('Gateway event ' + eventType + ' completed for request ' + requestName + '.')"/>
-
-            <if condition="eventType === 'writeCompleted'">
-                <set field="notificationType" value="success"/>
-                <set field="notificationTitle" from="'Sync Parameters completed for ' + (device.deviceName || device.deviceId)"/>
-                <set field="notificationMessage"
-                        from="message || ('Synchronized ' + (rowCount || 0) + ' parameter value(s) to device ' + (device.deviceName || device.deviceId) + (protocol ? ' via ' + protocol : '') + '.')"/>
+            <set field="deviceLabel" from="device.deviceName || device.deviceId"/>
+            <set field="notificationType" value="success"/>
+            <set field="notificationTitle" from="'Device request completed for ' + deviceLabel"/>
+            <set field="notificationMessage" from="'Device request ' + requestName + ' completed for device ' + deviceLabel + '.'"/>
+            <if condition="request.requestTypeEnumId === 'DrtWrite'">
+                <set field="notificationTitle" from="'Sync Parameters completed for ' + deviceLabel"/>
+                <set field="notificationMessage" from="'Synchronized ' + (itemCount || 0) + ' parameter value(s) to device ' + deviceLabel + '.'"/>
             </if>
-            <if condition="eventType === 'exportCompleted'">
-                <set field="notificationType" value="success"/>
-                <set field="notificationTitle" from="'Download Process completed for ' + (device.deviceName || device.deviceId)"/>
-                <set field="notificationMessage"
-                        from="message || ('Device configuration export completed for device ' + (device.deviceName || device.deviceId) + '.')"/>
+            <if condition="request.requestTypeEnumId === 'DrtConfigWrite'">
+                <set field="notificationTitle" from="'Download Process completed for ' + deviceLabel"/>
+                <set field="notificationMessage" from="'Device configuration export completed for device ' + deviceLabel + ' (' + (fileCount || 0) + ' file(s)).'"/>
             </if>
-            <if condition="eventType === 'writeFailed' || status === 'error'">
+            <if condition="request.requestTypeEnumId === 'DrtContentTransfer'">
+                <set field="notificationTitle" from="'Content transfer completed for ' + deviceLabel"/>
+                <set field="notificationMessage" from="'Transferred ' + (fileCount || 0) + ' file(s) to device ' + deviceLabel + '.'"/>
+            </if>
+            <if condition="['failed', 'partial', 'uncertain'].includes(status)">
                 <set field="notificationType" value="danger"/>
-                <set field="notificationTitle" from="'Gateway request failed for ' + (device.deviceName || device.deviceId)"/>
-                <set field="notificationMessage"
-                        from="message || ('Gateway request ' + requestName + ' failed for device ' + (device.deviceName || device.deviceId) + (protocol ? ' via ' + protocol : '') + '.')"/>
+                <set field="notificationTitle" from="'Device request ' + status + ' for ' + deviceLabel"/>
+                <set field="notificationMessage" from="errorMessage || ('Device request ' + requestName + ' ' + status + ' for device ' + deviceLabel + '.')"/>
             </if>
 
             <service-call name="moqui.device.DeviceServices.send#DeviceNotification"
-                    in-map="{deviceId:device.deviceId, notificationTopic:notificationTopic,
+                    in-map="{deviceId:device.deviceId, notificationTopic:'DeviceRequestResult',
                             notificationType:notificationType, notificationTitle:notificationTitle,
                             message:notificationMessage}"/>
-            <log level="info" message="Processed gateway request callback ${eventType} for request ${requestName}, device ${device.deviceId}."/>
         </actions>
     </service>
     <service verb="apply" noun="DeviceConfig">
@@ -312,10 +304,29 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
     </service>
     <service verb="run" noun="DeviceRequest" authenticate="false" transaction="ignore">
-        <description>Run a device request.</description>
+        <description>
+            Run a device request. The implementation is the service in DeviceRequest.runServiceName, which implements
+            run#DeviceRequestInternal: a protocol service of moqui-device-gateway or another component.
+
+            A DrtConfigWrite request without items, whose query is a DeviceRuleSet, exports that rule set: the recipe
+            files of moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles are sent as transferFiles.
+            A write, recipe export or content transfer ends with notify#DeviceRequestResult.
+        </description>
         <in-parameters>
             <parameter name="requestName" required="true"/>
+            <parameter name="deviceContentId"><description>DrtContentTransfer: the DeviceContent to send.</description></parameter>
+            <parameter name="transferFiles" type="List"><description>DrtContentTransfer or DrtConfigWrite: files to
+                send, each a Map with name and content (text) or bytes.</description></parameter>
+            <parameter name="payload" type="Map"><description>DrtWrite without items: a message sent as it is, as JSON
+                (an MQTT publication on the request topic).</description></parameter>
         </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="itemResults" type="List"/>
+            <parameter name="subscriptionId"/>
+            <parameter name="transferredFiles" type="List"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
         <actions>
             <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request" cache="true"/>
             <if condition="!request">
@@ -358,33 +369,66 @@ along with this software (see the LICENSE.md file). If not, see
                     <econdition field-name="changedEntityName" value="moqui.math.Parameter"/>
                     <econdition field-name="pkPrimaryValue" operator="in" from="parameterIdSet"/>
                     <econdition field-name="changedDate" operator="greater" from="request.lastUpdatedStamp"/>
-                    <order-by field-name="parameterId"/>
+                    <order-by field-name="pkPrimaryValue"/>
                     <select-field field-name="pkPrimaryValue"/>
                 </entity-find>
                 <set field="changedIds" from="(changedRows ?? []).map(it => it.pkPrimaryValue)"/>
                 <set field="requestItemList" from="(requestItemList ?? []).filter(it => changedIds.includes(it.parameterId))"/>
             </if>
-            <if condition="!(bulkRequestItemList?.length) &amp;&amp; !(requestItemList?.length) &amp;&amp; !request.query">
+            <if condition="'DrtConfigWrite' === request.requestTypeEnumId &amp;&amp; !(transferFiles?.length) &amp;&amp; request.query
+                    &amp;&amp; !(bulkRequestItemList?.length) &amp;&amp; !(requestItemList?.length)">
+                <entity-find-one entity-name="moqui.device.DeviceRuleSet" value-field="deviceRuleSet" cache="true">
+                    <field-map field-name="deviceRuleSetId" from="request.query"/>
+                </entity-find-one>
+                <if condition="deviceRuleSet">
+                    <service-call name="moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles"
+                        in-map="{deviceRuleSetId:request.query}" out-map="exportOut"/>
+                    <if condition="ec.message.hasError()"><return/></if>
+                    <set field="transferFiles" from="exportOut.files"/>
+                </if>
+            </if>
+            <if condition="!(bulkRequestItemList?.length) &amp;&amp; !(requestItemList?.length) &amp;&amp; !request.query
+                    &amp;&amp; !payload &amp;&amp; !deviceContentId &amp;&amp; !(transferFiles?.length) &amp;&amp; 'DrtUnsubscribe' !== request.requestTypeEnumId">
+                <set field="status" value="unchanged"/>
                 <return message="The device request with name ${requestName} has no items to process."/>
             </if>
             <log level="info" message="Running device request with name ${request.requestName}."/>
+            <set field="status" value="completed"/>
             <!-- Call the configured service. -->
             <service-call name="${request.runServiceName}" in-map="{device:device, request:request,
-                connection:connection,
+                connection:connection, deviceContentId:deviceContentId, transferFiles:transferFiles, payload:payload,
                 bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList}"
                 out-map="context" disable-authz="true" transaction="ignore"/>
+            <if condition="['DrtWrite', 'DrtConfigWrite', 'DrtContentTransfer'].includes(request.requestTypeEnumId)">
+                <service-call name="moqui.device.DeviceServices.notify#DeviceRequestResult" disable-authz="true"
+                    in-map="{requestName:requestName, status:status, itemCount:(itemResults ?? []).length,
+                        fileCount:(transferredFiles ?? []).length, errorMessage:errorMessage}" ignore-error="true"/>
+            </if>
+            <if condition="['failed', 'partial', 'uncertain'].includes(status)">
+                <script>ec.message.addError(errorMessage || `Device request ${requestName}: ${status}. Inspect itemResults.`);</script>
+            </if>
         </actions>
     </service>
-    <!-- The interface that tools or libraries will need to implement for fieldbus communications. -->
+    <!-- The interface that tools or libraries implement for device communications. -->
     <service verb="run" noun="DeviceRequestInternal" type="interface">
-        <description>Run a device request over a fieldbus protocol.</description>
+        <description>Run a device request over a device protocol.</description>
         <in-parameters>
             <parameter name="device" required="true" type="EntityValue"/>
             <parameter name="request" required="true" type="EntityValue"/>
             <parameter name="connection" type="EntityValue"/>
             <parameter name="requestItemList" type="List"/>
             <parameter name="bulkRequestItemList" type="List"/>
+            <parameter name="deviceContentId"/>
+            <parameter name="transferFiles" type="List"/>
+            <parameter name="payload" type="Map"/>
         </in-parameters>
+        <out-parameters>
+            <parameter name="status"><description>completed, partial, active, failed, uncertain or unchanged</description></parameter>
+            <parameter name="itemResults" type="List"/>
+            <parameter name="subscriptionId"/>
+            <parameter name="transferredFiles" type="List"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
     </service>
 
     <!-- ========== DeviceContent Services ========== -->

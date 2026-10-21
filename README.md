@@ -336,79 +336,69 @@ detail; here it is co-primary.
 |---|---|
 | `moqui.device.DeviceServices.run#DeviceRequest` | Dispatches a single `DeviceRequest` to its configured implementation service |
 | `moqui.device.DeviceServices.run#DeviceRequestGroup` | Runs all requests in a named group; designed to be called as a scheduled service |
-| `moqui.device.DeviceServices.run#DeviceRequestInternal` | Interface that driver components (e.g. `moqui-plc4j`) must implement |
+| `moqui.device.DeviceServices.run#DeviceRequestInternal` | Interface that driver components implement (`moqui-device-gateway` on MR-Moqui, `moqui-plc4j` on Java) |
 | `moqui.device.DeviceServices.send#DeviceNotification` | Sends a Moqui notification for a device event |
-| `moqui.device.DeviceGatewayServices.run#GatewayDeviceRequest` | Dispatches scalar parameter write/read/subscribe requests via the `moqui-device-gateway` REST API (MQTT / OPC UA) |
-| `moqui.device.DeviceGatewayServices.export#DeviceConfig` | Exports a device configuration recipe (Codesys txt format, persistent data) via the gateway |
-| `moqui.device.DeviceGatewayServices.export#Trajectory` | Exports a computed trajectory as a structured JSON payload to the gateway for MQTT publishing (ephemeral bulk data) |
-| `moqui.device.DeviceGatewayServices.transfer#DeviceContent` | Streams a file (G-Code, firmware, recipe) to a device via the gateway SFTP/file endpoint |
+| `moqui.device.DeviceServices.notify#DeviceRequestResult` | Notifies the user of the result of a write, recipe export or content transfer (topic `DeviceRequestResult`) |
+| `moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles` | Renders the recipe of a `DeviceRuleSet` as `name:=value` text files, one per rule priority |
+| `moqui.device.DeviceConfigServices.export#DeviceConfig` | Renders a recipe and sends the files with `run#DeviceRequest` (file or SFTP endpoint) |
+| `moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes` | Reads the waypoints of a planned trajectory as one value list per axis |
+| `moqui.device.TrajectoryPlannerServices.export#Trajectory` | Publishes a planned trajectory as one JSON message with `run#DeviceRequest` (MQTT) |
+| `moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint` | Posts JSON to an inference provider with the key in `X-API-Key` |
+
+`run#DeviceRequest` calls the service in `DeviceRequest.runServiceName`. With
+[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway) (branch
+`mr-moqui`) installed, that is a protocol service of the gateway, run in the same
+process: `moqui.device.gateway.MqttServices.run#DeviceRequest`, `OpcUaServices`,
+`ModbusServices`, `FileServices` (file and SFTP) or `PlcLogServices`. Besides the
+request items, `run#DeviceRequest` passes `deviceContentId` and `transferFiles`
+(files to send) and `payload` (a message sent as it is), and returns `status`,
+`itemResults`, `subscriptionId`, `transferredFiles` and `errorMessage`.
 
 ### Device content transfer destination
 
-`moqui.device.DeviceGatewayServices.transfer#DeviceContent` reads the source
-file from `DeviceContent.contentLocation`, but that is **not** the final
-destination path on the target side.
+A `DrtContentTransfer` request sends a file to the endpoint in its own
+`brokerUri`:
 
-The effective destination is the **gateway-side** `DeviceRequest.brokerUri`
-resolved by the `requestName` passed to the service.
+```
+moqui.device.DeviceServices.run#DeviceRequest
+    requestName     = VIRTUAL_PLC_01_TransferContent
+    deviceContentId = <the DeviceContent to send>
+```
 
-In practical terms:
-
-- Moqui reads the source file from `DeviceContent.contentLocation`
-- Moqui sends the file bytes to `moqui-device-gateway`
-- the gateway loads the gateway-side `DeviceRequest`
-- the gateway writes the file to the URI stored in `DeviceRequest.brokerUri`
-
-Typical destination examples are:
+The gateway reads the source file from `DeviceContent.contentLocation` (the
+content must belong to the device of the request) and writes it to the
+directory in `brokerUri`, for example:
 
 - `file:/mnt/cnc-share/programs`
 - `file:/var/lib/plc/recipes`
-- `sftp:operator@cnc1.factory.local:22/programs`
+- `sftp://cnc1.factory.local:22/programs`, with a `DeviceConnection` whose
+  options hold the user and the pinned `host-key-fingerprint`
 
-So, when an operator uses **Transfer Content**, the file is transferred to the
-path or endpoint declared in the gateway-side `DeviceRequest.brokerUri`.
+`DeviceTestData.xml` ships `VIRTUAL_PLC_01_TransferContent` and
+`DG_EDGE_01_TransferContent`, which write to `target/transferred-content/plc`
+and `target/transferred-content/device-group`. The SimpleScreens device screens
+find these requests by name: `{deviceId}_TransferContent`, and likewise
+`{deviceId}_ExportProcess` for the recipe export and `{deviceId}_SyncParameters`
+for the parameter write.
 
-### Transfer content seed data in `DeviceTestData.xml`
+### Recipe export
 
-The industrial test suite ships two Moqui-side requests and two gateway-side
-requests so the **Transfer Content** button can be tested end to end.
+A `DrtConfigWrite` request with a file or SFTP endpoint exports the recipe of
+the `DeviceRuleSet` in its `query`:
 
-Moqui-side requests:
+```
+moqui.device.DeviceConfigServices.export#DeviceConfig
+    requestName     = VIRTUAL_PLC_01_ExportProcess
+    deviceRuleSetId = <optional, default: DeviceRequest.query>
+    deviceId        = <optional, only the rules of this device>
+```
 
-- `VIRTUAL_PLC_01_TransferContent`
-- `DG_EDGE_01_TransferContent`
-
-These are the request names referenced by the SimpleScreens transitions. They
-call `moqui.device.DeviceGatewayServices.transfer#DeviceContent` and point to
-the gateway HTTP endpoint through `brokerUri`, for example:
-
-- `http://localhost:8081?apiKey=change-me-in-production`
-
-Their `query` field identifies the gateway-side request that performs the final
-write:
-
-- `VIRTUAL_PLC_01_GatewayTransferContent`
-- `DG_EDGE_01_GatewayTransferContent`
-
-Gateway-side requests:
-
-- `VIRTUAL_PLC_01_GatewayTransferContent`
-- `DG_EDGE_01_GatewayTransferContent`
-
-These are standard `DrtContentTransfer` requests executed locally by
-`moqui-device-gateway`. Their `brokerUri` is the real destination path, for
-example:
-
-- `file:target/transferred-content/plc`
-- `file:target/transferred-content/device-group`
-
-So the transfer chain is:
-
-1. operator clicks **Transfer Content** in Moqui
-2. Moqui resolves the Moqui-side `*_TransferContent` request
-3. Moqui posts the file bytes to `moqui-device-gateway`
-4. the gateway resolves the matching `*_GatewayTransferContent` request
-5. the gateway writes the file to the `brokerUri` target directory
+`get#DeviceConfigExportFiles` writes one file per `DeviceRule.priority`, named
+`ruleSetName_pNN.txt`, with one `name:=value` line per `Parameter` of the rule's
+`DeviceConfig` and, when the configuration has a trajectory, the
+`Trajectory.points[i]...` lines of its `TrajectoryPoint` records. Running the
+request alone with `run#DeviceRequest` (in a request group, for example) exports
+the rule set in its `query` the same way.
 
 ## Service layer — Python ecosystem via moqui-jep
 
@@ -417,8 +407,9 @@ seed data, and the service interfaces only. Driver implementations that
 communicate with physical devices over fieldbus protocols (Modbus, OPC UA,
 EtherNet/IP, CANopen, etc.) are provided by separate components such as
 **moqui-plc4j** (Apache PLC4X, JVM) or Python libraries (python-opcua, pymodbus,
-python-snap7, etc.) embedded via **moqui-jep** in the Java ecosystem. MR-Moqui uses Rust/JavaScript services
-or external providers for control algorithms and model inference.
+python-snap7, etc.) embedded via **moqui-jep** in the Java ecosystem. On MR-Moqui
+the protocol drivers are the Rust services of **moqui-device-gateway**; control
+algorithms and model inference use Rust/JavaScript services or external providers.
 
 ## Example service: 6-DOF TCP waypoint planning
 
@@ -530,8 +521,8 @@ definition. Once the binding is in place it becomes possible to:
 - **Dispatch the trajectory to the drive**: call `export#Trajectory` (ephemeral
   bulk path) or `export#DeviceConfig` (persistent recipe path). `export#Trajectory`
   reads the `ApproximatedFunctionSample` / `VectorComponent` chain directly and
-  publishes a structured per-axis JSON payload via `moqui-device-gateway` → MQTT →
-  `MqttParameterSub` on the controller. `export#DeviceConfig` serialises parameters
+  publishes a structured per-axis JSON payload over MQTT (through
+  `moqui-device-gateway`) to `MqttParameterSub` on the controller. `export#DeviceConfig` serialises parameters
   as a Codesys txt recipe that the PLC recipe FB loads from the filesystem.
 - **Close the feedback loop**: bind the velocity and acceleration derivatives
   (computed from consecutive waypoints and `TrajectoryPoint.pointTimeOffsetMillis`)
@@ -550,23 +541,25 @@ path end-to-end:
 
 | Record | Key |
 |---|---|
-| `Device` | `deviceId = moqui-device-gateway1` |
+| `Device` | `deviceId = ROBOT_ARM_01` |
 | `DeviceRequest` | `requestName = ROBOT_ARM_TRAJECTORY_EXPORT` |
 
-The `DeviceRequest` points to a local gateway instance (`brokerUri = http://localhost:8081`)
-and carries the MQTT topic in its `query` field (`moqui/robot/arm1/trajectory`).
+The `DeviceRequest` is an MQTT write without items, run by
+`moqui.device.gateway.MqttServices.run#DeviceRequest`: `brokerUri` is the
+broker (`mqtt://localhost:1883`) and `query` the topic
+(`moqui/robot/arm1/trajectory`).
 
 To dispatch after planning:
 
 ```
-moqui.device.DeviceGatewayServices.export#Trajectory
+moqui.device.TrajectoryPlannerServices.export#Trajectory
     approximatedFunctionId = <output of run#RobotArmTrajectoryPlanner>
     requestName            = ROBOT_ARM_TRAJECTORY_EXPORT
 ```
 
-The service reads the `ApproximatedFunctionSample` / `VectorComponent` chain directly
-(no `DeviceRequestItem` or `Parameter` records required) and POSTs the following
-JSON to the gateway endpoint `POST /api/trajectory/export`:
+`get#TrajectoryAxes` reads the `ApproximatedFunctionSample` / `VectorComponent`
+chain directly (no `DeviceRequestItem` or `Parameter` records required), and
+`export#Trajectory` publishes this message with `run#DeviceRequest`:
 
 ```json
 {
@@ -581,8 +574,8 @@ JSON to the gateway endpoint `POST /api/trajectory/export`:
 }
 ```
 
-The gateway publishes this payload to the MQTT topic; `MqttParameterSub` on the
-PLC receives it and passes each key/value pair to `JsonToParametersMapper`, which
+`MqttParameterSub` on the PLC receives it and passes each key/value pair to
+`JsonToParametersMapper`, which
 must be specialized to map the declared axes into the controller's trajectory
 buffer. The stock HVAC scalar mapper is not an array/trajectory decoder.
 
@@ -602,7 +595,7 @@ external vision-language-action inference endpoints:
 
 Both services resolve an image from `DeviceContent` associated with a `Device`,
 encode it as base64 through the Moqui resource system, and delegate the real HTTP
-call to the component wrapper service, using MR-Moqui's REST client. This keeps the transport contract
+call to `call#InferenceEndpoint`, using MR-Moqui's REST client. This keeps the transport contract
 explicit while still letting Moqui validate device/image ownership before any
 remote inference call is made.
 
@@ -677,10 +670,8 @@ explicitly load that file after normal seeds and `DeviceTestData.xml`. Restore
 the ordinary manifest after testing. Mantle is never needed for normal use.
 See [test instructions](test/README.md).
 
-This test XML is the reference scenario mirrored by the local SQL fixtures in
-`moqui-device-gateway`. The SQL files may stay transport-oriented for gateway
-tests, but the IDs, device roles, and operational meaning should remain aligned
-with `DeviceTestData.xml`.
+The Rust tests of `moqui-device-gateway` use the same IDs and device roles as
+`DeviceTestData.xml`; keep them aligned when the scenario changes.
 
 `data/HVACDemoData.xml` is the process-automation example reverse-engineered
 from the `mantle-hvac` CODESYS application in `moqui-plc`. It contains the flat
@@ -743,7 +734,7 @@ becoming a second configuration source.
 
 - **[moqui-math](https://github.com/moqui/moqui-math)** — the dual math model (models, runs, lineage, trajectories).
 - **[moqui-plc](https://github.com/moqui/moqui-plc)** — generates IEC 61131-3 PLC code from this device model and its status flows.
-- **[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway)** — executes this model at the edge as Rust/Tokio tasks (`mr-moqui`) or Java/Apache Camel routes (`main`, formerly `master`).
+- **[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway)** — runs the device requests of this model: a Moqui component on MR-Moqui (`mr-moqui`), or a standalone Java/Apache Camel service (`main`, formerly `master`).
 
 ## Dependencies
 
@@ -768,19 +759,15 @@ From the framework root:
 ```
 
 The Gradle/JVM/DJL examples above apply to the Java implementation. MR-Moqui
-runs the component's JavaScript/XML services and uses its REST client for gateway
-and inference calls. Gateway API keys are sent in `X-API-Key`; payloads are JSON.
-For the canonical component test suite, follow [test/README.md](test/README.md),
-which describes the optional Mantle telemetry setup.
-
-Binary content is encoded as standard padded base64 without converting bytes
-to UTF-8. A non-success HTTP response stops the operation.
-
-The Rust gateway's [branch-specific README](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
-is authoritative for MQTT v5, OPC UA, file/SFTP transport, scope and deployment.
-The gateway and framework are independent processes sharing the model database.
-`export#Trajectory` now includes `requestName`; the gateway checks that request's
-scope and that `mqttTopic` matches its modeled query.
+runs the component's JavaScript/XML services. Field communication (MQTT, OPC UA,
+Modbus TCP, file and SFTP) is the
+[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
+component, installed in the same runtime: `run#DeviceRequest` calls its protocol
+services directly, with no HTTP hop and no gateway API key. Inference providers
+are called over HTTP with `call#InferenceEndpoint`; their key is sent in
+`X-API-Key`, payloads are JSON, and a non-success HTTP response stops the
+operation. For the canonical component test suite, follow
+[test/README.md](test/README.md), which describes the optional Mantle telemetry setup.
 
 ### Trajectory planning on MR-Moqui
 
@@ -857,10 +844,8 @@ The new obstacle profile is a separate demonstration, not a replacement for
 an existing trained model. No original Java model binary was available for a
 numerical cross-runtime comparison; the 12-input contract has an exported test fixture.
 
-Protocol execution belongs to the separate gateway. MQTT v5 is supported by
-Java's Camel/Paho MQTT5 and Rust's `rumqttc::v5`, including QoS acknowledgements
-and session options. Camel URI syntax is accepted for migration. Full gateway
-parity is not yet established: Rust adds `/api/trajectory/export`, absent from
-the reviewed Java branch. Rust OPC UA supports explicit security policies,
-certificate trust, password and X509 user identities; supported options and
-remaining Camel-specific differences are documented in the gateway's branch README.
+Protocol execution belongs to moqui-device-gateway. On MR-Moqui it is a
+component in the same process; on the Java line (`main`) it is a separate
+Quarkus/Camel service reached over HTTP. Supported protocol options and the
+remaining differences from the Camel routes are documented in the gateway's
+`mr-moqui` README.

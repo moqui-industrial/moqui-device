@@ -1,4 +1,4 @@
-"""Loopback-only HTTP fixture for MR-Moqui's gateway wrapper contract specs."""
+"""Loopback-only HTTP fixture for the inference provider contract specs of moqui-device."""
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 

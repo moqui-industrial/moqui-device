@@ -1,5 +1,5 @@
 // MR-Moqui component regression tests. Optional HTTP contract checks use
-// gateway_test_url pointing at a local fixture server (see test/README.md).
+// inference_test_url pointing at a local fixture server (see test/README.md).
 spec({
     setup() { ec.artifactExecution.disableAuthz(); },
     cleanup() { ec.artifactExecution.enableAuthz(); },
@@ -96,11 +96,40 @@ feature("configuration dry run preserves device values", {
     },
 });
 
-feature("HTTP wrapper preserves JSON data and uses an API header", {
-    ignore: !System.getProperty("gateway_test_url"),
+feature("a rule set renders as one recipe file per priority", {
     when() {
-        return call("moqui.device.DeviceGatewayServices.call#GatewayEndpoint", {
-            url: System.getProperty("gateway_test_url") + "/echo", apiKey: "test-only-token",
+        return call("moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles", {deviceRuleSetId: "TestPlcGatewayRuleSet1"});
+    },
+    then(out) {
+        out.files.length == 1;
+        out.files[0].name == "Test PLC Gateway Rule Set_p10.txt";
+        out.files[0].rowCount == 2;
+        out.files[0].content.split("\n")[0].startsWith("dev.PLC_RECIPE_REFERENCE:=250");
+        out.files[0].content.split("\n")[1] == "dev.PLC_RECIPE_STATE:=AUTO";
+    },
+});
+
+feature("trajectory axes follow the vector space of the planned trajectory", {
+    when() {
+        const planned = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", {
+            mathModelId:"TrjPlannerMlp6DofV1", plannerMode:"linear-demo",
+            startPose:[0,0,0,0,0,0], goalPose:[9,18,27,0,0,0],
+        });
+        return call("moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes", {approximatedFunctionId: planned.approximatedFunctionId});
+    },
+    then(out) {
+        out.waypointCount == 10;
+        out.vectorSpaceEnumId == "EngTcpPose6Dof";
+        out.axes.X.length == 10;
+        out.axes.Z[9] == 27;
+    },
+});
+
+feature("HTTP wrapper preserves JSON data and uses an API header", {
+    ignore: !System.getProperty("inference_test_url"),
+    when() {
+        return call("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint", {
+            url: System.getProperty("inference_test_url") + "/echo", apiKey: "test-only-token",
             payload: { filename: "binary.bin", contentBase64: "AP8Q", axes: { X: [1, 2] } },
         });
     },
@@ -114,12 +143,12 @@ feature("HTTP wrapper preserves JSON data and uses an API header", {
 });
 
 feature("HTTP errors do not produce a success response", {
-    ignore: !System.getProperty("gateway_test_url"),
+    ignore: !System.getProperty("inference_test_url"),
     allowMessageErrors: true,
     when() {
         let failed = false;
         try {
-            call("moqui.device.DeviceGatewayServices.call#GatewayEndpoint", { url: System.getProperty("gateway_test_url") + "/fail" });
+            call("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint", { url: System.getProperty("inference_test_url") + "/fail" });
             failed = ec.message.hasError();
         } catch (err) { failed = true; }
         return { failed };
@@ -128,13 +157,13 @@ feature("HTTP errors do not produce a success response", {
 });
 
 feature("OpenVLA sends the exact binary image through the MR resource stream", {
-    ignore: !System.getProperty("gateway_test_url"),
+    ignore: !System.getProperty("inference_test_url"),
     when() {
         const location = "/tmp/moqui-openvla-contract.bin";
         ec.resource.getLocationReference(location).putBytes(new Uint8Array([0, 255, 16]));
         call("store#moqui.device.DeviceContent", {deviceContentId:"OpenVlaContractImage", deviceId:"VIRTUAL_PLC_01", contentTypeEnumId:"DCntImage", contentLocation:location});
         return call("moqui.device.TrajectoryPlannerServices.run#OpenVla", {
-            deviceId:"VIRTUAL_PLC_01", deviceContentId:"OpenVlaContractImage", prompt:"test", openVlaBaseUrl:System.getProperty("gateway_test_url"),
+            deviceId:"VIRTUAL_PLC_01", deviceContentId:"OpenVlaContractImage", prompt:"test", openVlaBaseUrl:System.getProperty("inference_test_url"),
         });
     },
     then(out) {
@@ -167,12 +196,12 @@ feature("the demo planner explicitly labels interpolation and persists waypoints
 });
 
 feature("grounding persists vector data through the MR entity API", {
-    ignore: !System.getProperty("gateway_test_url"),
+    ignore: !System.getProperty("inference_test_url"),
     when() {
         ec.resource.getLocationReference("/tmp/moqui-grounding-contract.bin").putBytes(new Uint8Array([0,255,16]));
         call("store#moqui.device.DeviceContent", {deviceContentId:"GroundingContractImage", deviceId:"VIRTUAL_PLC_01", contentTypeEnumId:"DCntImage", contentLocation:"/tmp/moqui-grounding-contract.bin"});
         return call("moqui.device.TrajectoryPlannerServices.run#OpenVlaGrounding", {
-            deviceId:"VIRTUAL_PLC_01", deviceContentId:"GroundingContractImage", prompt:"test", openVlaBaseUrl:System.getProperty("gateway_test_url"), saveResult:true, returnTargetPose:true,
+            deviceId:"VIRTUAL_PLC_01", deviceContentId:"GroundingContractImage", prompt:"test", openVlaBaseUrl:System.getProperty("inference_test_url"), saveResult:true, returnTargetPose:true,
         });
     },
     then(out) {
@@ -187,10 +216,10 @@ feature("grounding persists vector data through the MR entity API", {
 });
 
 feature("remote trajectory planning persists provider waypoints", {
-    ignore: !System.getProperty("gateway_test_url"),
+    ignore: !System.getProperty("inference_test_url"),
     when() {
         const output = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", {
-            plannerMode:"remote", mathModelId:"TrjPlannerMlp6DofV1", inferenceUrl:System.getProperty("gateway_test_url") + "/plan",
+            plannerMode:"remote", mathModelId:"TrjPlannerMlp6DofV1", inferenceUrl:System.getProperty("inference_test_url") + "/plan",
             startPose:[0,0,0,0,0,0], goalPose:[1,2,3,0,0,0],
         });
         return { output, samples:ec.entity.find("moqui.math.ApproximatedFunctionSample").condition("approximatedFunctionId",output.approximatedFunctionId).count() };

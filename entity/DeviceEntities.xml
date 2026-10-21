@@ -547,7 +547,6 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="AMQP Broker" enumId="DrrAMQPBroker" parentEnumId="DrrBroker" enumTypeId="DeviceRequestRouter"/>
             <moqui.basic.Enumeration description="STOMP Broker" enumId="DrrSTOMPBroker" parentEnumId="DrrBroker" enumTypeId="DeviceRequestRouter"/>
             <moqui.basic.Enumeration description="Kafka" enumId="DrrKafka" parentEnumId="DrrBroker" enumTypeId="DeviceRequestRouter"/>
-            <moqui.basic.Enumeration description="Moqui Device Gateway (external Camel/Quarkus process)" enumId="DrrMoquiDeviceGateway" enumTypeId="DeviceRequestRouter"/>
         </seed-data>
     </entity>
     <entity entity-name="DeviceRequestItem" package="moqui.device" cache="true">

@@ -29,7 +29,7 @@ python3 test/http_fixture.py --port 18091
 In another terminal, from MR-Moqui:
 
 ```bash
-gateway_test_url=http://127.0.0.1:18091 ./moq test --debug moqui-device
+inference_test_url=http://127.0.0.1:18091 ./moq test --debug moqui-device
 ```
 
 `--db existing` is only for a disposable, already loaded test database; the tests
@@ -41,7 +41,7 @@ For a disposable already loaded database, load the test fixture explicitly:
 
 ```bash
 ./moq load --debug types=test components=moqui-device
-gateway_test_url=http://127.0.0.1:18091 ./moq test --debug moqui-device --db existing
+inference_test_url=http://127.0.0.1:18091 ./moq test --debug moqui-device --db existing
 ```
 
 The optional actual ONNX/provider integration feature uses

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+
+    <service verb="get" noun="DeviceConfigExportFiles">
+        <description>
+            Renders the recipe of a DeviceRuleSet as text files, one per DeviceRule priority, named
+            ruleSetName_pNN.txt. Each line is name:=value, sorted by name.
+
+            Parameter lines: the Parameter records of the DeviceConfig of each DeviceRule. The name is the
+            requestItemName of a DeviceRequestItem of the Parameter when there is one; otherwise it depends on
+            DeviceConfig.deviceTypeEnumId: DtPLC gives dev.alias, DtMoquiPlc* gives dev.deviceName.alias, any other
+            type gives the alias, or deviceName.parameterName. The alias is Parameter.parameterAlias, or
+            ParameterDef.parameterName; deviceName is PhysicalDevice.deviceName, or the deviceId of the rule. The value
+            is numericValue, else parameterEnumId, else symbolicValue.
+
+            Trajectory lines, when the DeviceConfig has an approximatedFunctionId: Trajectory.trajectoryId,
+            Trajectory.pointCount and, for each TrajectoryPoint (index sequenceNum - 1),
+            Trajectory.points[i].pos.v[d] (VectorComponent.realValue), .sequenceNum, .timeOffsetMs, .isBreakPoint,
+            .hasBlendingOverride, .bufferMode and .transitionMode (from blendingEnumId), .blendingMode
+            (ParametricPathPoint.tolerance).
+
+            This is the query of the run-device-config-export route of the former Quarkus gateway, on the Entity
+            Engine.
+        </description>
+        <in-parameters>
+            <parameter name="deviceRuleSetId" required="true"/>
+            <parameter name="deviceId"><description>Only the rules of this device.</description></parameter>
+            <parameter name="deviceRuleId"><description>Only this rule.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="files" type="List"><description>Maps with name, content, priority and rowCount.</description></parameter>
+            <parameter name="rowCount" type="Integer"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            const ruleSet = ec.entity.find("moqui.device.DeviceRuleSet").condition("deviceRuleSetId", deviceRuleSetId).one();
+            if (!ruleSet) {
+                ec.message.addError(`DeviceRuleSet ${deviceRuleSetId} not found.`);
+                return;
+            }
+            const ruleSetName = ruleSet.ruleSetName || deviceRuleSetId;
+            const nonEmpty = (value) => value != null && value !== '' ? String(value) : null;
+            // a decimal field is a Decimal object in the script: toNumber() reads it
+            const toNumber = (value) => value != null && typeof value.toNumber === 'function' ? value.toNumber() : Number(value);
+            const bufferModes = {PpcmPlcAborting: '0', PpcmPlcBuffered: '1', PpcmPlcBlendingLow: '2',
+                PpcmPlcBlendingPrev: '3', PpcmPlcBlendingNext: '4', PpcmPlcBlendingHigh: '5'};
+            const transitionModes = {PpcmPlcTMNone: '0', PpcmPlcTMCornerDist: '1', PpcmPlcTMConstVel: '2',
+                PpcmPlcTMStartVel: '3', PpcmPlcTMMaxVel: '4'};
+
+            // priority -> {lines: [[name, value]], parameterIds: Set, pointCount}
+            const groups = new Map();
+            const group = (priority) => {
+                const key = priority == null ? 0 : toNumber(priority);
+                if (!groups.has(key)) groups.set(key, {lines: [], parameterIds: new Set(), pointCount: 0});
+                return groups.get(key);
+            };
+
+            let ruleFind = ec.entity.find("moqui.device.DeviceRule").condition("deviceRuleSetId", deviceRuleSetId);
+            if (deviceId) ruleFind = ruleFind.condition("deviceId", deviceId);
+            if (deviceRuleId) ruleFind = ruleFind.condition("deviceRuleId", deviceRuleId);
+            for (const rule of (ruleFind.list() || [])) {
+                if (!rule.deviceConfigId) continue;
+                const config = ec.entity.find("moqui.device.DeviceConfig").condition("deviceConfigId", rule.deviceConfigId).one();
+                if (!config) continue;
+                const physical = rule.deviceId ?
+                    ec.entity.find("moqui.device.PhysicalDevice").condition("deviceId", rule.deviceId).one() : null;
+                const deviceName = nonEmpty(physical?.deviceName) || rule.deviceId;
+                const g = group(rule.priority);
+
+                const parameters = ec.entity.find("moqui.math.Parameter").condition("deviceConfigId", config.deviceConfigId).list();
+                for (const p of (parameters || [])) {
+                    if (g.parameterIds.has(p.parameterId)) continue;
+                    const def = ec.entity.find("moqui.math.ParameterDef").condition("parameterDefId", p.parameterDefId).one();
+                    if (!def) continue;
+                    g.parameterIds.add(p.parameterId);
+                    let itemName = null;
+                    for (const item of (ec.entity.find("moqui.device.DeviceRequestItem").condition("parameterId", p.parameterId).list() || [])) {
+                        if (item.requestItemName != null && (itemName == null || item.requestItemName > itemName)) itemName = item.requestItemName;
+                    }
+                    const alias = nonEmpty(p.parameterAlias);
+                    const type = config.deviceTypeEnumId || '';
+                    let name = nonEmpty(itemName);
+                    if (name == null) {
+                        if (type === 'DtPLC') name = 'dev.' + (alias || def.parameterName);
+                        else if (type.startsWith('DtMoquiPlc')) name = 'dev.' + deviceName + '.' + (alias || def.parameterName);
+                        else name = alias || (deviceName + '.' + def.parameterName);
+                    }
+                    const value = p.numericValue != null ? String(p.numericValue) :
+                        (p.parameterEnumId != null ? p.parameterEnumId : p.symbolicValue);
+                    g.lines.push([name, value ?? '']);
+                }
+
+                const functionId = config.approximatedFunctionId;
+                if (!functionId) continue;
+                g.lines.push(['Trajectory.trajectoryId', String(functionId)]);
+                const points = ec.entity.find("moqui.math.TrajectoryPoint").condition("approximatedFunctionId", functionId).list();
+                for (const point of (points || [])) {
+                    const sample = ec.entity.find("moqui.math.ApproximatedFunctionSample")
+                        .condition("approximatedFunctionId", functionId)
+                        .condition("approximatedFunctionSampleId", point.approximatedFunctionSampleId).one();
+                    if (!sample) continue;
+                    g.pointCount++;
+                    const prefix = `Trajectory.points[${toNumber(sample.sequenceNum) - 1}]`;
+                    if (sample.sampleVectorId) {
+                        for (const comp of (ec.entity.find("moqui.math.VectorComponent").condition("vectorId", sample.sampleVectorId).list() || [])) {
+                            g.lines.push([`${prefix}.pos.v[${comp.dimensionIndex}]`, String(comp.realValue)]);
+                        }
+                    }
+                    g.lines.push([`${prefix}.sequenceNum`, String(sample.sequenceNum)]);
+                    g.lines.push([`${prefix}.timeOffsetMs`, point.pointTimeOffsetMillis != null ? String(point.pointTimeOffsetMillis) : '0.0']);
+                    g.lines.push([`${prefix}.isBreakPoint`, point.isBreakPoint === 'Y' ? 'TRUE' : 'FALSE']);
+                    g.lines.push([`${prefix}.hasBlendingOverride`, point.blendingEnumId != null ? 'TRUE' : 'FALSE']);
+                    g.lines.push([`${prefix}.bufferMode`, bufferModes[point.blendingEnumId] ?? '3']);
+                    g.lines.push([`${prefix}.transitionMode`, transitionModes[point.blendingEnumId] ?? '0']);
+                    const pathPoint = ec.entity.find("moqui.math.ParametricPathPoint")
+                        .condition("approximatedFunctionId", functionId)
+                        .condition("approximatedFunctionSampleId", point.approximatedFunctionSampleId).one();
+                    g.lines.push([`${prefix}.blendingMode`, pathPoint?.tolerance != null ? String(pathPoint.tolerance) : '0.0']);
+                }
+            }
+
+            files = [];
+            rowCount = 0;
+            for (const priority of [...groups.keys()].sort((a, b) => a - b)) {
+                const g = groups.get(priority);
+                if (g.pointCount > 0) g.lines.push(['Trajectory.pointCount', String(g.pointCount)]);
+                if (g.lines.length === 0) continue;
+                g.lines.sort((a, b) => a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0));
+                files.push({
+                    name: `${ruleSetName}_p${String(priority).padStart(2, '0')}.txt`,
+                    content: g.lines.map(([name, value]) => `${name}:=${value}`).join('\n'),
+                    priority: priority,
+                    rowCount: g.lines.length
+                });
+                rowCount += g.lines.length;
+            }
+        ]]></script></actions>
+    </service>
+
+    <service verb="export" noun="DeviceConfig" authenticate="false" transaction="ignore">
+        <description>
+            Exports the recipe of a DeviceRuleSet (get#DeviceConfigExportFiles) and sends the files with
+            run#DeviceRequest. The DeviceRequest is a DrtConfigWrite with a file or SFTP endpoint, for example
+            runServiceName moqui.device.gateway.FileServices.run#DeviceRequest and brokerUri
+            file:/mnt/plc-share/recipes, or sftp://plc1.factory.local:22/recipes with a DeviceConnection whose options
+            hold the user and the pinned host-key-fingerprint. Its query is the default DeviceRuleSet, so running the
+            request alone (in a request group, for example) exports that rule set too.
+        </description>
+        <in-parameters>
+            <parameter name="requestName" required="true"/>
+            <parameter name="deviceRuleSetId"><description>Default: the query of the DeviceRequest.</description></parameter>
+            <parameter name="deviceId"><description>Only the rules of this device.</description></parameter>
+            <parameter name="deviceRuleId"><description>Only this rule.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="files" type="List"><description>Maps with name, priority and rowCount.</description></parameter>
+            <parameter name="rowCount" type="Integer"/>
+            <parameter name="transferredFiles" type="List"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            const dr = ec.entity.find("moqui.device.DeviceRequest").condition("requestName", requestName).one();
+            if (!dr) {
+                ec.message.addError(`DeviceRequest ${requestName} not found.`);
+                return;
+            }
+            const ruleSetId = deviceRuleSetId || dr.query;
+            if (!ruleSetId) {
+                ec.message.addError(`No deviceRuleSetId given and DeviceRequest ${requestName} has no query.`);
+                return;
+            }
+            const rendered = ec.service.sync().name("moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles")
+                .parameters({deviceRuleSetId: ruleSetId, deviceId: deviceId, deviceRuleId: deviceRuleId}).call();
+            if (ec.message.hasError()) return;
+            files = (rendered.files || []).map(f => ({name: f.name, priority: f.priority, rowCount: f.rowCount}));
+            rowCount = rendered.rowCount || 0;
+            if (files.length === 0) {
+                ec.message.addError(`DeviceRuleSet ${ruleSetId} has no parameters or trajectory points to export.`);
+                return;
+            }
+            const result = ec.service.sync().name("moqui.device.DeviceServices.run#DeviceRequest")
+                .parameters({requestName: requestName, transferFiles: rendered.files}).call();
+            status = result?.status;
+            transferredFiles = result?.transferredFiles;
+            errorMessage = result?.errorMessage;
+            ec.logger.info(`DeviceConfig export of rule set ${ruleSetId} with request ${requestName}: ${status}, ${files.length} file(s), ${rowCount} line(s)`);
+        ]]></script></actions>
+    </service>
+</services>

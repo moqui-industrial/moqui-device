@@ -430,8 +430,8 @@ Grant of Patent License.
     <moqui.device.DeviceRule deviceRuleId="HvacCdHotValveRule" ruleTypeEnumId="DrtApplyConfig" deviceRuleSetId="HvacCivilDehumidifyingRules" deviceConfigId="HvacHotValveConfig" deviceId="HVAC_HOT_GLYCOL_VALVE" ruleName="Configure hot valve" priority="10" isEnabled="Y" runDevice="N"/>
     <moqui.device.DeviceRule deviceRuleId="HvacCdAhuFanRule" ruleTypeEnumId="DrtApplyConfig" deviceRuleSetId="HvacCivilDehumidifyingRules" deviceConfigId="HvacAhuFanConfig" deviceId="HVAC_AHU_FAN" ruleName="Configure AHU fan" priority="10" isEnabled="Y" runDevice="N"/>
 
-    <!-- Gateway-facing demo requests. Credentials remain deployment-owned. -->
-    <moqui.device.DeviceRequest requestName="HVAC_DEMO_LiveParametersWrite" deviceId="HVAC_DEMO_PLC" requestTypeEnumId="DrtWrite" purposeEnumId="DrpControl" routerEnumId="DrrMoquiDeviceGateway" brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1" query="moqui/hvac-demo/parameters/live" onlyChangedParameters="Y"/>
+    <!-- Demo requests run by moqui-device-gateway. Credentials remain deployment-owned. -->
+    <moqui.device.DeviceRequest requestName="HVAC_DEMO_LiveParametersWrite" deviceId="HVAC_DEMO_PLC" requestTypeEnumId="DrtWrite" purposeEnumId="DrpControl" routerEnumId="DrrMQTTBroker" runServiceName="moqui.device.gateway.MqttServices.run#DeviceRequest" brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1" query="moqui/hvac-demo/parameters/live" onlyChangedParameters="Y"/>
     <moqui.device.DeviceRequestItem requestName="HVAC_DEMO_LiveParametersWrite" parameterId="HvacTempSetpoint" requestItemName="tempSetpoint" sequenceNum="10" query="moqui/hvac-demo/parameters/live"/>
     <moqui.device.DeviceRequestItem requestName="HVAC_DEMO_LiveParametersWrite" parameterId="HvacTempHysteresis" requestItemName="tempHysteresis" sequenceNum="20" query="moqui/hvac-demo/parameters/live"/>
     <moqui.device.DeviceRequestItem requestName="HVAC_DEMO_LiveParametersWrite" parameterId="HvacTempMin" requestItemName="tempMin" sequenceNum="30" query="moqui/hvac-demo/parameters/live"/>
@@ -452,7 +452,6 @@ Grant of Patent License.
     <moqui.device.DeviceRequestItem requestName="HVAC_DEMO_LiveParametersWrite" parameterId="HvacMinRuntime" requestItemName="minRuntime" sequenceNum="180" query="moqui/hvac-demo/parameters/live"/>
     <moqui.device.DeviceRequestItem requestName="HVAC_DEMO_LiveParametersWrite" parameterId="HvacEstimatedBreakDuration" requestItemName="estimatedBreakDuration" sequenceNum="190" query="moqui/hvac-demo/parameters/live"/>
     <moqui.device.DeviceRequestItem requestName="HVAC_DEMO_LiveParametersWrite" parameterId="HvacMinBreakDuration" requestItemName="minBreakDuration" sequenceNum="200" query="moqui/hvac-demo/parameters/live"/>
-    <moqui.device.DeviceRequest requestName="run#HVAC_DEMO_LiveParametersWrite" deviceId="HVAC_DEMO_GATEWAY" requestTypeEnumId="DrtWrite" purposeEnumId="DrpControl" routerEnumId="DrrMoquiDeviceGateway" runServiceName="moqui.device.DeviceGatewayServices.run#GatewayDeviceRequest" brokerUri="http://localhost:8081" query="HVAC_DEMO_LiveParametersWrite" onlyChangedParameters="N"/>
-    <moqui.device.DeviceRequest requestName="run#HVAC_DEMO_ExportRecipe" deviceId="HVAC_DEMO_GATEWAY" requestTypeEnumId="DrtConfigWrite" purposeEnumId="DrpCommissioning" routerEnumId="DrrMoquiDeviceGateway" runServiceName="moqui.device.DeviceGatewayServices.export#DeviceConfig" brokerUri="http://localhost:8081" query="HvacCivilCoolingRules" onlyChangedParameters="N"/>
+    <moqui.device.DeviceRequest requestName="HVAC_DEMO_PLC_ExportProcess" deviceId="HVAC_DEMO_PLC" requestTypeEnumId="DrtConfigWrite" purposeEnumId="DrpCommissioning" routerEnumId="DrrDirect" runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest" brokerUri="file:target/hvac-demo/recipes" query="HvacCivilCoolingRules" timeout="30000"/>
 
 </entity-facade-xml>
