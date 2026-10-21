@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!--
+    The runtime side of the HVAC demo with moqui-device-gateway (MR-Moqui): the broker connection and the PLC log
+    subscription. It is demo data, not seed: the gateway starts every active subscription after a start, and an
+    installation that only loads the seed must not subscribe to a local demo broker. Load it explicitly:
+        ./moq load -l runtime/component/moqui-device/data/HVACDemoGatewayData.xml
+    The broker credentials come from the environment of the Moqui process (MQTT_USERNAME, MQTT_PASSWORD), never
+    from the seed.
+-->
+<entity-facade-xml type="demo">
+    <moqui.device.DeviceConnection connectionName="HVAC_DEMO_MQTT" deviceId="HVAC_DEMO_PLC"
+            connectionTypeEnumId="DctDirectConnection" purposeEnumId="DcpOperations" driverEnumId="DcdMqtt"
+            transportConfig="mqtt://localhost:1883" options="usernameEnv=MQTT_USERNAME&amp;passwordEnv=MQTT_PASSWORD"/>
+
+    <!-- The live-parameter write of HVACDemoData.xml authenticates with this connection. -->
+    <moqui.device.DeviceRequest requestName="HVAC_DEMO_LiveParametersWrite" connectionName="HVAC_DEMO_MQTT"/>
+
+    <!-- The ParameterLogger and LogDispatcher events of the CODESYS application: ParameterLog for an event with a
+         source (an exact parameterId), DeviceLog for the others. loggerName must be HVAC_DEMO_PLC. -->
+    <moqui.device.DeviceRequest requestName="HVAC_DEMO_PlcLogSubscribe" deviceId="HVAC_DEMO_PLC"
+            requestTypeEnumId="DrtSubscribe" purposeEnumId="DrpLogging" routerEnumId="DrrMQTTBroker"
+            runServiceName="moqui.device.gateway.PlcLogServices.run#DeviceRequest" connectionName="HVAC_DEMO_MQTT"
+            query="moqui-plc" description="PLC log subscription of the HVAC demo application"/>
+</entity-facade-xml>

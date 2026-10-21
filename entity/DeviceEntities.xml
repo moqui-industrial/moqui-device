@@ -446,6 +446,7 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="KNXnet/IP" enumId="DcdKNXnetIP" enumCode="knxnet-ip" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Logix CIP/EIP" enumId="DcdLogixCIPEIP" enumCode="logix" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Opc Ua" enumId="DcdOpcUa" enumCode="opcua" enumTypeId="DeviceConnectionDriver"/>
+            <moqui.basic.Enumeration description="MQTT" enumId="DcdMqtt" enumCode="mqtt" enumTypeId="DeviceConnectionDriver"/>
             <!-- NOTE: for MTConnect protocol see https://docs.mtconnect.org -->
             <moqui.basic.Enumeration description="MTConnect" enumId="DcdMtConnect" enumCode="mtConnect" enumTypeId="DeviceConnectionDriver"/>
             <!-- Device Connection Transport -->

@@ -53,7 +53,7 @@ model, command, log, and audit both how a device *moves* and how it *switches*.
 |---|---|
 | Digital Twin | `Device`, `PhysicalDevice`, `DeviceGroup`, `DeviceGroupMember`, `DeviceContent`, `DeviceStats`, `DeviceLog` |
 | Math Binding | `DeviceMathModel` — binds a `Device` to a `moqui.math.MathModel` for training, inference, simulation, or monitoring |
-| Connectivity | `DeviceConnection` — Modbus TCP, OPC UA, EtherNet/IP, CANopen, PROFINET, BACnet/IP, KNXnet/IP, MTConnect, Logix CIP/EIP |
+| Connectivity | `DeviceConnection` — driver types Modbus TCP, OPC UA, MQTT, EtherNet/IP, CANopen, PROFINET, BACnet/IP, KNXnet/IP, MTConnect, Logix CIP/EIP (on MR-Moqui, moqui-device-gateway runs MQTT, OPC UA, Modbus TCP, file and SFTP) |
 | Requests | `DeviceRequest`, `DeviceRequestItem` — Read, Write, ConfigWrite, Subscribe (Event / StateChange / Cyclic), Unsubscribe, ContentTransfer, Browse, Discovery |
 | Configuration | `DeviceConfig` + `Parameter` — reusable atomic recipes, drive macros, tuning profiles, startup profiles, safety baselines, and configuration artifacts |
 | Rules | `DeviceRuleSet`, `DeviceRule` — ordered production cycles, batch procedures, commissioning plans, validation sequences, and recovery procedures scoped to a root `Device` |
@@ -681,6 +681,14 @@ approved MQTT live-parameter whitelist. Recipe values exclude runtime `actual`
 durations and process feedback; those remain device-bound parameters. Device
 and parameter names are logical Moqui names without the CODESYS `dev.` prefix;
 the gateway/PLC projection adds that namespace only when emitting IEC paths.
+
+`data/HVACDemoGatewayData.xml` (type `demo`) is the runtime side of the same
+demo on MR-Moqui with moqui-device-gateway: the broker `DeviceConnection`
+`HVAC_DEMO_MQTT` (credentials from `MQTT_USERNAME`/`MQTT_PASSWORD` in the Moqui
+environment) and the PLC log subscription `HVAC_DEMO_PlcLogSubscribe`. It is not
+seed, because the gateway starts every active subscription after a start; load
+it explicitly with
+`./moq load -l runtime/component/moqui-device/data/HVACDemoGatewayData.xml`.
 
 ### HVAC seed-first example
 
