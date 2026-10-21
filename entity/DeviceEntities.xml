@@ -478,7 +478,7 @@ along with this software (see the LICENSE.md file). If not, see
 
         <field name="runServiceName" type="text-medium">
             <description>Service implementing the org.moqui.impl.BasicServices.run#DeviceRequestInternal interface, to execute this device request.</description></field>
-        <field name="onlyChangedParameters" type="text-indicator" default="Y">
+        <field name="onlyChangedParameters" type="text-indicator" default="'Y'">
             <description>Only the parameters modified by the lastUpdatedStamp date will be sent or received.
                 The EntityAuditLog is used to evaluate the changed parameters.</description></field>
 
@@ -496,7 +496,7 @@ along with this software (see the LICENSE.md file). If not, see
             <description>Cyclical polling interval for direct subscription request.</description></field>
         <field name="qos" type="number-integer">
             <description>Request or message Quality of Service QoS. For broker-managed requests.</description></field>
-        <field name="retained" type="text-indicator" default="N">
+        <field name="retained" type="text-indicator" default="'N'">
             <description>Instructs the broker or Moqui to keep a copy of that request/message after sending it to current subscribers.
                 For broker-managed requests.</description></field>
         <field name="query" type="text-medium">
@@ -605,7 +605,7 @@ along with this software (see the LICENSE.md file). If not, see
             <description>It can be used to store the current physical value if needed.</description></field>
         <field name="itemUomId" type="id">
             <description>Item value unit of measure. Protocol related unit of measure, e.g. V, mA, etc.</description></field>
-        <field name="allowDuplicate" type="text-indicator" default="N">
+        <field name="allowDuplicate" type="text-indicator" default="'N'">
             <description>Indicates whether duplicate values should be collected or avoided.
                 For numeric parameter the corresponding value will be updated only when the change exceeds the tolerance configured.
                 Example:
@@ -1039,7 +1039,7 @@ along with this software (see the LICENSE.md file). If not, see
                 Priority is the sequencing mechanism for composing multiple DeviceConfig applications inside a rule set.
             </description></field>
         <field name="serviceName" type="text-medium"/>
-        <field name="isEnabled" type="text-indicator" default="Y"/>
+        <field name="isEnabled" type="text-indicator" default="'Y'"/>
 		<field name="fromDate" type="date-time" default="ec.user.nowTimestamp"/>
         <field name="thruDate" type="date-time"/>
 
