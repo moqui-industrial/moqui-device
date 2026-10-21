@@ -199,7 +199,7 @@ def export_onnx(model: nn.Module):
     torch.onnx.export(model, dummy, OUT_PATH, input_names=["input"], output_names=["waypoints"],
         dynamic_axes={"input": {0: "batch"}, "waypoints": {0: "batch"}}, opset_version=17)
     # PyTorch 2.x may export as external data ({name}.onnx + {name}.onnx.data).
-    # Consolidate into a single self-contained file so DJL can load it from any path.
+    # Consolidate into a single self-contained file, loadable from any path (Rust/ort, Java/DJL).
     data_file = OUT_PATH + ".data"
     if os.path.exists(data_file):
         import onnx as _onnx

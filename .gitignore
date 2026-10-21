@@ -2,12 +2,10 @@
 build
 lib/test-*.jar
 
-# ML model binaries — generated locally by script/train_trajectory_planner.py
+# ML model binaries: trajectory_planner.onnx (script/train_robot_arm_trajectory_planner.py) is committed
 data/ml/*.onnx
+!data/ml/trajectory_planner.onnx
 data/ml/*.pt
-
-# Runtime JARs — downloaded by script/download-djl-jars.ps1
-lib/*.jar
 
 # IntelliJ IDEA files
 .idea/
