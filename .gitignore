@@ -51,3 +51,6 @@ Desktop.ini
 # Native component build artifacts
 /target/
 /Cargo.lock
+
+# Python bytecode
+__pycache__/
