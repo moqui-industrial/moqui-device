@@ -344,6 +344,14 @@ detail; here it is co-primary.
 | `moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes` | Reads the waypoints of a planned trajectory as one value list per axis |
 | `moqui.device.TrajectoryPlannerServices.export#Trajectory` | Publishes a planned trajectory as one JSON message with `run#DeviceRequest` (MQTT) |
 | `moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint` | Posts JSON to an inference provider with the key in `X-API-Key` |
+| `moqui.device.TrajectoryPlannerServices.infer#PlannerWaypoints` | The waypoints of a planner mode: linear-demo, native ONNX or the remote provider |
+| `moqui.device.TrajectoryPlannerServices.get#DeviceImage` | The image of a device (DeviceContent) as base64, for an inference provider |
+| `moqui.device.TrajectoryPlannerServices.create#PoseVector` | A Vector with its VectorComponent records |
+
+The services are XML Actions. Scripts are left only where XML Actions have no
+element: the CODESYS recipe rendering of `get#DeviceConfigExportFiles`, the REST
+call of `call#InferenceEndpoint`, the notification message of
+`send#DeviceNotification` and the file stream of `save#DeviceContentFile`.
 
 `run#DeviceRequest` calls the service in `DeviceRequest.runServiceName`. With
 [moqui-device-gateway](https://github.com/moqui/moqui-device-gateway) (branch

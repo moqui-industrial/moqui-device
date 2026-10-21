@@ -174,33 +174,29 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="secondaryResults" type="List"><description>The redundant destinations (see
                 run#DeviceRequest).</description></parameter>
         </out-parameters>
-        <actions><script><![CDATA[
-            const dr = ec.entity.find("moqui.device.DeviceRequest").condition("requestName", requestName).one();
-            if (!dr) {
-                ec.message.addError(`DeviceRequest ${requestName} not found.`);
-                return;
-            }
-            const ruleSetId = deviceRuleSetId || dr.query;
-            if (!ruleSetId) {
-                ec.message.addError(`No deviceRuleSetId given and DeviceRequest ${requestName} has no query.`);
-                return;
-            }
-            const rendered = ec.service.sync().name("moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles")
-                .parameters({deviceRuleSetId: ruleSetId, deviceId: deviceId, deviceRuleId: deviceRuleId}).call();
-            if (ec.message.hasError()) return;
-            files = (rendered.files || []).map(f => ({name: f.name, priority: f.priority, rowCount: f.rowCount}));
-            rowCount = rendered.rowCount || 0;
-            if (files.length === 0) {
-                ec.message.addError(`DeviceRuleSet ${ruleSetId} has no parameters or trajectory points to export.`);
-                return;
-            }
-            const result = ec.service.sync().name("moqui.device.DeviceServices.run#DeviceRequest")
-                .parameters({requestName: requestName, transferFiles: rendered.files}).call();
-            status = result?.status;
-            transferredFiles = result?.transferredFiles;
-            errorMessage = result?.errorMessage;
-            secondaryResults = result?.secondaryResults;
-            ec.logger.info(`DeviceConfig export of rule set ${ruleSetId} with request ${requestName}: ${status}, ${files.length} file(s), ${rowCount} line(s)`);
-        ]]></script></actions>
+        <actions>
+            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request">
+                <field-map field-name="requestName"/>
+            </entity-find-one>
+            <if condition="!request"><return error="true" message="DeviceRequest ${requestName} not found."/></if>
+            <set field="ruleSetId" from="deviceRuleSetId || request.query"/>
+            <if condition="!ruleSetId">
+                <return error="true" message="No deviceRuleSetId given and DeviceRequest ${requestName} has no query."/>
+            </if>
+            <service-call name="moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles" out-map="rendered"
+                    in-map="{deviceRuleSetId:ruleSetId, deviceId:deviceId, deviceRuleId:deviceRuleId}"/>
+            <set field="files" from="(rendered.files || []).map(f => ({name:f.name, priority:f.priority, rowCount:f.rowCount}))"/>
+            <set field="rowCount" from="rendered.rowCount || 0"/>
+            <if condition="!files.length">
+                <return error="true" message="DeviceRuleSet ${ruleSetId} has no parameters or trajectory points to export."/>
+            </if>
+            <service-call name="moqui.device.DeviceServices.run#DeviceRequest" out-map="result"
+                    in-map="{requestName:requestName, transferFiles:rendered.files}"/>
+            <set field="status" from="result.status"/>
+            <set field="transferredFiles" from="result.transferredFiles"/>
+            <set field="errorMessage" from="result.errorMessage"/>
+            <set field="secondaryResults" from="result.secondaryResults"/>
+            <log level="info" message="DeviceConfig export of rule set ${ruleSetId} with request ${requestName}: ${status}, ${files.length} file(s), ${rowCount} line(s)"/>
+        </actions>
     </service>
 </services>

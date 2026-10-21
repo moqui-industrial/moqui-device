@@ -61,15 +61,14 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="modelId"/>
             <parameter name="unnormKey"/>
         </out-parameters>
-        <actions><script><![CDATA[
-            const output = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint")
-                .parameters({url: openVlaLocation, apiKey: apiKey, payload: {instruction: instruction, image_base64: image_base64, unnorm_key: unnorm_key, do_sample: do_sample}}).call();
-            if (ec.message.hasError()) return;
-            const data = output.response || {};
-            action = data.action;
-            modelId = data.modelId;
-            unnormKey = data.unnormKey;
-        ]]></script></actions>
+        <actions>
+            <service-call name="moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint" out-map="output"
+                    in-map="{url:openVlaLocation, apiKey:apiKey, payload:{instruction:instruction, image_base64:image_base64,
+                        unnorm_key:unnorm_key, do_sample:do_sample}}"/>
+            <set field="action" from="output.response?.action"/>
+            <set field="modelId" from="output.response?.modelId"/>
+            <set field="unnormKey" from="output.response?.unnormKey"/>
+        </actions>
     </service>
 
     <service verb="call" noun="OpenVlaGrounding">
@@ -94,19 +93,19 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="coordinateSystem"/>
             <parameter name="modelId"/>
         </out-parameters>
-        <actions><script><![CDATA[
-            const output = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint")
-                .parameters({url: openVlaLocation, apiKey: apiKey, payload: {instruction: instruction, image_base64: image_base64, return_target_pose: return_target_pose, target_pose_dimension: target_pose_dimension}}).call();
-            if (ec.message.hasError()) return;
-            const data = output.response || {};
-            boundingBox = data.boundingBox;
-            center = data.center;
-            targetPose = data.targetPose;
-            objectLabel = data.objectLabel;
-            confidence = data.confidence;
-            coordinateSystem = data.coordinateSystem;
-            modelId = data.modelId;
-        ]]></script></actions>
+        <actions>
+            <service-call name="moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint" out-map="output"
+                    in-map="{url:openVlaLocation, apiKey:apiKey, payload:{instruction:instruction, image_base64:image_base64,
+                        return_target_pose:return_target_pose, target_pose_dimension:target_pose_dimension}}"/>
+            <set field="data" from="output.response || {}"/>
+            <set field="boundingBox" from="data.boundingBox"/>
+            <set field="center" from="data.center"/>
+            <set field="targetPose" from="data.targetPose"/>
+            <set field="objectLabel" from="data.objectLabel"/>
+            <set field="confidence" from="data.confidence"/>
+            <set field="coordinateSystem" from="data.coordinateSystem"/>
+            <set field="modelId" from="data.modelId"/>
+        </actions>
     </service>
 
     <service verb="run" noun="OpenVla">
@@ -129,64 +128,15 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="unnormKey"/>
         </out-parameters>
         <actions>
-            <entity-find-one entity-name="moqui.device.Device" value-field="device">
-                <field-map field-name="deviceId"/>
-            </entity-find-one>
-            <if condition="!device">
-                <return error="true" message="Device ${deviceId} not found"/>
-            </if>
-
-            <if condition="deviceContentId">
-                <then>
-                    <entity-find-one entity-name="moqui.device.DeviceContent" value-field="deviceContent">
-                        <field-map field-name="deviceContentId"/>
-                    </entity-find-one>
-                    <if condition="!deviceContent || deviceContent.deviceId != deviceId">
-                        <return error="true" message="DeviceContent ${deviceContentId} not found for device ${deviceId}"/>
-                    </if>
-                    <set field="imageLocation" from="deviceContent.contentLocation"/>
-                </then>
-                <else>
-                    <service-call name="moqui.device.DeviceServices.get#DeviceContentLocation"
-                            in-map="{deviceId:deviceId, contentTypeEnumIdList:['DCntImage']}" out-map="context"/>
-                    <if condition="!deviceContent">
-                        <return error="true" message="No image DeviceContent found for device ${deviceId}"/>
-                    </if>
-                    <set field="imageLocation" from="contentLocation"/>
-                </else>
-            </if>
-
-            <if condition="!imageLocation">
-                <return error="true" message="DeviceContent ${deviceContent ? deviceContent.deviceContentId : deviceContentId} has no contentLocation"/>
-            </if>
-
-            <script><![CDATA[
-                const rr = ec.resource.getLocationReference ? ec.resource.getLocationReference(imageLocation) : null;
-                if (!rr) {
-                    ec.message.addError(`Could not resolve image location ${imageLocation}.`);
-                    return;
-                }
-                const stream = rr.openStream();
-                if (!stream) { ec.message.addError("Image file does not exist."); return; }
-                let imageBytes;
-                try { imageBytes = stream.readAllBytes(); } finally { stream.close(); }
-                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                imageBase64 = "";
-                for (let i = 0; i < imageBytes.length; i += 3) {
-                    const a = imageBytes[i], b = imageBytes[i + 1] || 0, c = imageBytes[i + 2] || 0;
-                    imageBase64 += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b >> 4)]
-                        + (i + 1 < imageBytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : "=")
-                        + (i + 2 < imageBytes.length ? alphabet[c & 63] : "=");
-                }
-                const baseUrl = (openVlaBaseUrl || "http://openvla:8000").replace(/\/+$/, "");
-                openVlaLocation = `${baseUrl}/act`;
-            ]]></script>
+            <service-call name="moqui.device.TrajectoryPlannerServices.get#DeviceImage" out-map="image"
+                    in-map="{deviceId:deviceId, deviceContentId:deviceContentId}"/>
+            <set field="deviceContent" from="image.deviceContent"/>
+            <set field="openVlaLocation" from="(openVlaBaseUrl || 'http://openvla:8000').replace(/\/+$/, '') + '/act'"/>
 
             <service-call name="moqui.device.TrajectoryPlannerServices.call#OpenVla"
-                    in-map="{openVlaLocation:openVlaLocation, apiKey:apiKey, instruction:prompt, image_base64:imageBase64,
+                    in-map="{openVlaLocation:openVlaLocation, apiKey:apiKey, instruction:prompt, image_base64:image.imageBase64,
                             unnorm_key:unnormKey, do_sample:doSample}"
                     out-map="openVlaResult"/>
-
             <set field="action" from="openVlaResult.action"/>
             <set field="modelId" from="openVlaResult.modelId"/>
             <set field="unnormKey" from="openVlaResult.unnormKey"/>
@@ -230,169 +180,63 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="targetPoseVectorId"/>
         </out-parameters>
         <actions>
-            <entity-find-one entity-name="moqui.device.Device" value-field="device">
-                <field-map field-name="deviceId"/>
-            </entity-find-one>
-            <if condition="!device">
-                <return error="true" message="Device ${deviceId} not found"/>
-            </if>
-
-            <if condition="deviceContentId">
-                <then>
-                    <entity-find-one entity-name="moqui.device.DeviceContent" value-field="deviceContent">
-                        <field-map field-name="deviceContentId"/>
-                    </entity-find-one>
-                    <if condition="!deviceContent || deviceContent.deviceId != deviceId">
-                        <return error="true" message="DeviceContent ${deviceContentId} not found for device ${deviceId}"/>
-                    </if>
-                    <set field="imageLocation" from="deviceContent.contentLocation"/>
-                </then>
-                <else>
-                    <service-call name="moqui.device.DeviceServices.get#DeviceContentLocation"
-                            in-map="{deviceId:deviceId, contentTypeEnumIdList:['DCntImage']}" out-map="context"/>
-                    <if condition="!deviceContent">
-                        <return error="true" message="No image DeviceContent found for device ${deviceId}"/>
-                    </if>
-                    <set field="imageLocation" from="contentLocation"/>
-                </else>
-            </if>
-
-            <if condition="!imageLocation">
-                <return error="true" message="DeviceContent ${deviceContent ? deviceContent.deviceContentId : deviceContentId} has no contentLocation"/>
-            </if>
-
-            <script><![CDATA[
-                const rr = ec.resource.getLocationReference ? ec.resource.getLocationReference(imageLocation) : null;
-                if (!rr) {
-                    ec.message.addError(`Could not resolve image location ${imageLocation}.`);
-                    return;
-                }
-                const stream = rr.openStream();
-                if (!stream) { ec.message.addError("Image file does not exist."); return; }
-                let imageBytes;
-                try { imageBytes = stream.readAllBytes(); } finally { stream.close(); }
-                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                imageBase64 = "";
-                for (let i = 0; i < imageBytes.length; i += 3) {
-                    const a = imageBytes[i], b = imageBytes[i + 1] || 0, c = imageBytes[i + 2] || 0;
-                    imageBase64 += alphabet[a >> 2] + alphabet[((a & 3) << 4) | (b >> 4)]
-                        + (i + 1 < imageBytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : "=")
-                        + (i + 2 < imageBytes.length ? alphabet[c & 63] : "=");
-                }
-                const baseUrl = (openVlaBaseUrl || "http://openvla:8000").replace(/\/+$/, "");
-                openVlaLocation = `${baseUrl}/ground`;
-            ]]></script>
+            <service-call name="moqui.device.TrajectoryPlannerServices.get#DeviceImage" out-map="image"
+                    in-map="{deviceId:deviceId, deviceContentId:deviceContentId}"/>
+            <set field="deviceContent" from="image.deviceContent"/>
+            <set field="openVlaLocation" from="(openVlaBaseUrl || 'http://openvla:8000').replace(/\/+$/, '') + '/ground'"/>
 
             <service-call name="moqui.device.TrajectoryPlannerServices.call#OpenVlaGrounding"
-                    in-map="{openVlaLocation:openVlaLocation, apiKey:apiKey, instruction:prompt, image_base64:imageBase64,
+                    in-map="{openVlaLocation:openVlaLocation, apiKey:apiKey, instruction:prompt, image_base64:image.imageBase64,
                             return_target_pose:returnTargetPose, target_pose_dimension:targetPoseDimension}"
                     out-map="groundingResult"/>
 
-            <script><![CDATA[
-                const normalizeNumberList = (value, fieldName, minSize = null) => {
-                    if (value == null) return null;
-                    const sourceList = Array.isArray(value) ? value : [value];
-                    const normalized = [];
-                    for (let idx = 0; idx < sourceList.length; idx++) {
-                        const entry = sourceList[idx];
-                        if (entry == null || String(entry).trim() === "") {
-                            ec.message.addError(`${fieldName}[${idx}] is empty.`);
-                            return null;
-                        }
-                        normalized.push(toDecimal(String(entry)));
-                    }
-                    if (minSize != null && normalized.length < minSize) {
-                        ec.message.addError(`${fieldName} must contain at least ${minSize} values.`);
-                        return null;
-                    }
-                    return normalized;
-                };
-
-                const boundingBoxList = normalizeNumberList(groundingResult ? groundingResult.boundingBox : null, "boundingBox", 4);
-                const centerList = normalizeNumberList(groundingResult ? groundingResult.center : null, "center", 2);
-                const targetPoseList = normalizeNumberList(groundingResult ? groundingResult.targetPose : null, "targetPose",
-                    returnTargetPose ? (targetPoseDimension || 6) : null);
-
-                if (!boundingBoxList && !centerList && !targetPoseList) {
-                    ec.message.addError(`OpenVLA grounding response for device ${deviceId} did not contain boundingBox, center, or targetPose.`);
-                    return;
-                }
-
-                boundingBox = boundingBoxList;
-                center = centerList;
-                targetPose = targetPoseList;
-                goalPose = targetPoseList;
-                objectLabel = groundingResult ? groundingResult.objectLabel : null;
-                confidence = groundingResult ? groundingResult.confidence : null;
-                coordinateSystem = (groundingResult && groundingResult.coordinateSystem) || "image-pixel";
-                modelId = groundingResult ? groundingResult.modelId : null;
-            ]]></script>
+            <service-call name="moqui.device.TrajectoryPlannerServices.check#NumberList" out-map="boundingBoxCheck"
+                    in-map="{values:groundingResult.boundingBox, fieldName:'boundingBox', minSize:4}"/>
+            <service-call name="moqui.device.TrajectoryPlannerServices.check#NumberList" out-map="centerCheck"
+                    in-map="{values:groundingResult.center, fieldName:'center', minSize:2}"/>
+            <service-call name="moqui.device.TrajectoryPlannerServices.check#NumberList" out-map="targetPoseCheck"
+                    in-map="{values:groundingResult.targetPose, fieldName:'targetPose',
+                        minSize:returnTargetPose ? (targetPoseDimension || 6) : null}"/>
+            <if condition="!boundingBoxCheck.numbers &amp;&amp; !centerCheck.numbers &amp;&amp; !targetPoseCheck.numbers">
+                <return error="true" message="OpenVLA grounding response for device ${deviceId} did not contain boundingBox, center, or targetPose."/>
+            </if>
+            <set field="boundingBox" from="boundingBoxCheck.numbers"/>
+            <set field="center" from="centerCheck.numbers"/>
+            <set field="targetPose" from="targetPoseCheck.numbers"/>
+            <set field="goalPose" from="targetPoseCheck.numbers"/>
+            <set field="objectLabel" from="groundingResult.objectLabel"/>
+            <set field="confidence" from="groundingResult.confidence"/>
+            <set field="coordinateSystem" from="groundingResult.coordinateSystem || 'image-pixel'"/>
+            <set field="modelId" from="groundingResult.modelId"/>
 
             <if condition="saveResult">
-                <script><![CDATA[
-                    const createVector = (name, description, vectorSpaceEnumId, purposeEnumId, values) => {
-                        if (!values || !values.length) return null;
-                        const vectorValue = ec.entity.makeValue("moqui.math.Vector");
-                        vectorValue.setFields({
-                            vectorTypeEnumId: "VtOrdinary",
-                            purposeEnumId: purposeEnumId,
-                            vectorSpaceEnumId: vectorSpaceEnumId,
-                            name: name,
-                            description: description,
-                            dimension: values.length
-                        }, true, null, null);
-                        vectorValue.setSequencedIdPrimary();
-                        vectorValue.create();
-                        for (let idx = 0; idx < values.length; idx++) {
-                            const componentValue = ec.entity.makeValue("moqui.math.VectorComponent");
-                            componentValue.setFields({
-                                vectorId: vectorValue.vectorId,
-                                dimensionIndex: idx,
-                                componentTypeEnumId: "VctCanonical",
-                                realValue: values[idx]
-                            }, true, null, null);
-                            componentValue.setSequencedIdPrimary();
-                            componentValue.create();
-                        }
-                        return vectorValue.vectorId;
-                    };
-
-                    const dcId = (deviceContent && deviceContent.deviceContentId) ? deviceContent.deviceContentId : "";
-                    if (saveBoundingBox && boundingBox) {
-                        boundingBoxMinVectorId = createVector(
-                            `bbox_min_${deviceId}`,
-                            `Visual grounding bounding-box min corner for device ${deviceId}, image ${dcId}`,
-                            imageVectorSpaceEnumId || "EuclideanSpace2D",
-                            "VpPosition",
-                            [boundingBox[0], boundingBox[1]]
-                        );
-                        boundingBoxMaxVectorId = createVector(
-                            `bbox_max_${deviceId}`,
-                            `Visual grounding bounding-box max corner for device ${deviceId}, image ${dcId}`,
-                            imageVectorSpaceEnumId || "EuclideanSpace2D",
-                            "VpPosition",
-                            [boundingBox[2], boundingBox[3]]
-                        );
-                    }
-                    if (saveCenter && center) {
-                        centerVectorId = createVector(
-                            `bbox_center_${deviceId}`,
-                            `Visual grounding center point for device ${deviceId}, image ${dcId}`,
-                            imageVectorSpaceEnumId || "EuclideanSpace2D",
-                            "VpPosition",
-                            center
-                        );
-                    }
-                    if (saveTargetPose && targetPose) {
-                        targetPoseVectorId = createVector(
-                            `target_pose_${deviceId}`,
-                            `Target TCP pose inferred from visual grounding for device ${deviceId}, image ${dcId}`,
-                            targetPoseVectorSpaceEnumId || "EngTcpPose6Dof",
-                            "VpPosition",
-                            targetPose
-                        );
-                    }
-                ]]></script>
+                <set field="imageLabel" from="deviceContent?.deviceContentId || ''"/>
+                <if condition="saveBoundingBox &amp;&amp; boundingBox">
+                    <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="minVector"
+                            in-map="{name:'bbox_min_' + deviceId, values:[boundingBox[0], boundingBox[1]],
+                                description:'Visual grounding bounding-box min corner for device ' + deviceId + ', image ' + imageLabel,
+                                vectorSpaceEnumId:imageVectorSpaceEnumId || 'EuclideanSpace2D', purposeEnumId:'VpPosition'}"/>
+                    <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="maxVector"
+                            in-map="{name:'bbox_max_' + deviceId, values:[boundingBox[2], boundingBox[3]],
+                                description:'Visual grounding bounding-box max corner for device ' + deviceId + ', image ' + imageLabel,
+                                vectorSpaceEnumId:imageVectorSpaceEnumId || 'EuclideanSpace2D', purposeEnumId:'VpPosition'}"/>
+                    <set field="boundingBoxMinVectorId" from="minVector.vectorId"/>
+                    <set field="boundingBoxMaxVectorId" from="maxVector.vectorId"/>
+                </if>
+                <if condition="saveCenter &amp;&amp; center">
+                    <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="centerVector"
+                            in-map="{name:'bbox_center_' + deviceId, values:center,
+                                description:'Visual grounding center point for device ' + deviceId + ', image ' + imageLabel,
+                                vectorSpaceEnumId:imageVectorSpaceEnumId || 'EuclideanSpace2D', purposeEnumId:'VpPosition'}"/>
+                    <set field="centerVectorId" from="centerVector.vectorId"/>
+                </if>
+                <if condition="saveTargetPose &amp;&amp; targetPose">
+                    <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="targetVector"
+                            in-map="{name:'target_pose_' + deviceId, values:targetPose,
+                                description:'Target TCP pose inferred from visual grounding for device ' + deviceId + ', image ' + imageLabel,
+                                vectorSpaceEnumId:targetPoseVectorSpaceEnumId || 'EngTcpPose6Dof', purposeEnumId:'VpPosition'}"/>
+                    <set field="targetPoseVectorId" from="targetVector.vectorId"/>
+                </if>
             </if>
         </actions>
     </service>
@@ -459,7 +303,6 @@ along with this software (see the LICENSE.md file). If not, see
             <if condition="!mathModel">
                 <return error="true" message="MathModel ${mathModelId} not found"/>
             </if>
-
             <entity-find-one entity-name="moqui.math.MathModelDefContent" value-field="onnxContent">
                 <field-map field-name="mathModelDefId" from="mathModel.mathModelDefId"/>
                 <field-map field-name="contentTypeEnumId" value="MmCntOnnx"/>
@@ -468,232 +311,277 @@ along with this software (see the LICENSE.md file). If not, see
                 <return error="true" message="No ONNX content for MathModelDef ${mathModel.mathModelDefId}"/>
             </if>
 
-            <script><![CDATA[
-                const normalizePose = (config, fieldName) => {
-                    if (!Array.isArray(config)) {
-                        ec.message.addError(`${fieldName} must be an Array with exactly 6 numeric values.`);
-                        return null;
-                    }
-                    if (config.length !== 6) {
-                        ec.message.addError(`${fieldName} must contain exactly 6 numeric values, found ${config.length}.`);
-                        return null;
-                    }
-                    const normalized = [];
-                    for (let i = 0; i < config.length; i++) {
-                        const val = Number(config[i]);
-                        if (!Number.isFinite(val)) {
-                            ec.message.addError(`${fieldName}[${i}] must be numeric, found '${config[i]}'.`);
-                            return null;
-                        }
-                        normalized.push(val);
-                    }
-                    return normalized;
-                };
+            <if condition="!startPose?.length"><return error="true" message="Missing startPose."/></if>
+            <if condition="!goalPose?.length"><return error="true" message="Missing goalPose."/></if>
+            <service-call name="moqui.device.TrajectoryPlannerServices.check#Pose" out-map="startCheck"
+                    in-map="{pose:startPose, fieldName:'startPose'}"/>
+            <service-call name="moqui.device.TrajectoryPlannerServices.check#Pose" out-map="goalCheck"
+                    in-map="{pose:goalPose, fieldName:'goalPose'}"/>
+            <set field="startPoseList" from="startCheck.poseList"/>
+            <set field="goalPoseList" from="goalCheck.poseList"/>
+            <if condition="!['linear-demo', 'remote', 'native'].includes(plannerMode)">
+                <return error="true" message="plannerMode must be native, remote or linear-demo."/>
+            </if>
+            <if condition="plannerMode === 'remote' &amp;&amp; !inferenceUrl">
+                <return error="true" message="MR-Moqui requires inferenceUrl for model inference. Use plannerMode=linear-demo only for explicit interpolation examples."/>
+            </if>
+            <if condition="plannerMode === 'linear-demo' &amp;&amp; obstacle">
+                <return error="true" message="linear-demo cannot plan around obstacles; configure an inference provider."/>
+            </if>
 
-                if (!startPose?.length) { ec.message.addError("Missing startPose."); return; }
-                if (!goalPose?.length) { ec.message.addError("Missing goalPose."); return; }
-
-                startPoseList = normalizePose(startPose, "startPose");
-                goalPoseList = normalizePose(goalPose, "goalPose");
-                if (!startPoseList || !goalPoseList) return;
-
-                if (plannerMode !== "linear-demo" && plannerMode !== "remote" && plannerMode !== "native") {
-                    ec.message.addError("plannerMode must be native, remote or linear-demo."); return;
-                }
-                if (plannerMode === "remote" && !inferenceUrl) {
-                    ec.message.addError("MR-Moqui requires inferenceUrl for model inference. Use plannerMode=linear-demo only for explicit interpolation examples."); return;
-                }
-                if (plannerMode === "linear-demo" && obstacle) {
-                    ec.message.addError("linear-demo cannot plan around obstacles; configure an inference provider."); return;
-                }
-                mathModelRunParameters = JSON.stringify({ startPose: startPoseList, goalPose: goalPoseList, plannerMode: plannerMode, onnxProfile: onnxProfile, obstacle: obstacle || null });
-                trajectoryLabel = trajectoryName || null;
-            ]]></script>
-
-            <set field="mathModelRunFields" from="{mathModelId: mathModelId, startTime: ec.user.nowTimestamp,
-                parameters: mathModelRunParameters, hasError: 'N'}"/>
-            <entity-make-value entity-name="moqui.math.MathModelRun" value-field="runVal" map="mathModelRunFields"/>
-            <script><![CDATA[
-                t0 = Date.now();
-                runVal.setSequencedIdPrimary();
-            ]]></script>
+            <set field="t0" from="Date.now()"/>
+            <entity-make-value entity-name="moqui.math.MathModelRun" value-field="runVal"
+                    map="{mathModelId:mathModelId, startTime:ec.user.nowTimestamp, hasError:'N',
+                        parameters:JSON.stringify({startPose:startPoseList, goalPose:goalPoseList, plannerMode:plannerMode,
+                            onnxProfile:onnxProfile, obstacle:obstacle || null})}"/>
+            <entity-sequenced-id-primary value-field="runVal"/>
             <entity-create value-field="runVal"/>
             <set field="runId" from="runVal.mathModelRunId"/>
 
-            <script><![CDATA[
-                try {
-                    const tInferStart = Date.now();
-                    if (plannerMode === "linear-demo") {
-                        waypoints = [];
-                        for (let i = 0; i < 10; i++) {
-                            waypoints.push(startPoseList.map((v, j) => v + (i / 9) * (goalPoseList[j] - v)));
-                        }
-                    } else if (plannerMode === "native") {
-                        const output = ec.service.sync().name("moqui.device.OnnxServices.infer#TrajectoryWaypoints")
-                            .parameters({mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList,
-                                onnxProfile: onnxProfile, obstacle: obstacle || null}).call();
-                        if (ec.message.hasError()) throw new Error("Native ONNX inference returned an error.");
-                        waypoints = output.waypoints;
-                    } else {
-                        const inferencePayload = {mathModelId: mathModelId, startPose: startPoseList, goalPose: goalPoseList};
-                        if (obstacle) inferencePayload.obstacle = obstacle;
-                        const output = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint")
-                            .parameters({url: inferenceUrl, apiKey: apiKey, payload: inferencePayload}).call();
-                        if (ec.message.hasError()) throw new Error("Inference provider returned an error.");
-                        waypoints = output.response?.waypoints;
-                    }
-                    if (!Array.isArray(waypoints) || waypoints.length < 2 || waypoints.some(
-                            point => !Array.isArray(point) || point.length !== 6 || point.some(value => typeof value !== 'number' || !Number.isFinite(value)))) {
-                        throw new Error("Planner must return at least two waypoints, each with six finite numeric coordinates.");
-                    }
-                    waypointCount = waypoints.length;
-                    inferenceLatencyMs = Date.now() - tInferStart;
-                } catch (err) {
-                    const elapsed = Date.now() - t0;
-                    const runRef = ec.entity.find("moqui.math.MathModelRun").condition("mathModelRunId", runId).one();
-                    if (runRef) {
-                        runRef.setFields({
-                            endDate: ec.user.nowTimestamp,
-                            runningTimeMillis: elapsed,
-                            hasError: "Y",
-                            errors: err.message || String(err)
-                        }, true, null, null);
-                        runRef.update();
-                    }
-                    ec.message.addError(`Trajectory inference failed: ${err.message || err}`);
-                    return;
-                }
-            ]]></script>
+            <!-- a failed inference is recorded on the run before the service fails -->
+            <set field="tInferStart" from="Date.now()"/>
+            <service-call name="moqui.device.TrajectoryPlannerServices.infer#PlannerWaypoints" out-map="inference" ignore-error="true"
+                    in-map="{plannerMode:plannerMode, mathModelId:mathModelId, startPose:startPoseList, goalPose:goalPoseList,
+                        onnxProfile:onnxProfile, obstacle:obstacle, inferenceUrl:inferenceUrl, apiKey:apiKey}"/>
+            <if condition="!inference?.waypoints">
+                <set field="inferenceError" from="inference?.errorMessage || 'Trajectory inference returned an error.'"/>
+                <entity-find-one entity-name="moqui.math.MathModelRun" value-field="failedRun" for-update="true">
+                    <field-map field-name="mathModelRunId" from="runId"/>
+                </entity-find-one>
+                <entity-set value-field="failedRun" map="{endDate:ec.user.nowTimestamp, runningTimeMillis:Date.now() - t0,
+                    hasError:'Y', errors:inferenceError}"/>
+                <entity-update value-field="failedRun"/>
+                <return error="true" message="Trajectory inference failed: ${inferenceError}"/>
+            </if>
+            <set field="waypoints" from="inference.waypoints"/>
+            <set field="waypointCount" from="waypoints.length"/>
+            <set field="inferenceLatencyMs" from="Date.now() - tInferStart"/>
 
-            <set field="trajectoryLabel" from="trajectoryLabel || 'AI Trajectory ' + runId"/>
-            <set field="approximatedFunctionFields" from="{vectorSpaceEnumId: 'EngTcpPose6Dof', codomainTypeEnumId: 'AfctVector',
-                dataStorageEnumId: 'AfdsPointTable', purposeEnumId: 'AfpRobotMotion', interpolationEnumId: plannerMode === 'linear-demo' ? 'AfiLinearPath' : 'AfiAIPath',
-                name: trajectoryLabel, description: '6-DOF TCP waypoint trajectory from AI planner'}"/>
-            <entity-make-value entity-name="moqui.math.ApproximatedFunction" value-field="approximatedFunctionValue" map="approximatedFunctionFields"/>
-            <script><![CDATA[approximatedFunctionValue.setSequencedIdPrimary()]]></script>
+            <entity-make-value entity-name="moqui.math.ApproximatedFunction" value-field="approximatedFunctionValue"
+                    map="{vectorSpaceEnumId:'EngTcpPose6Dof', codomainTypeEnumId:'AfctVector', dataStorageEnumId:'AfdsPointTable',
+                        purposeEnumId:'AfpRobotMotion', interpolationEnumId:plannerMode === 'linear-demo' ? 'AfiLinearPath' : 'AfiAIPath',
+                        name:trajectoryName || ('AI Trajectory ' + runId), description:'6-DOF TCP waypoint trajectory from AI planner'}"/>
+            <entity-sequenced-id-primary value-field="approximatedFunctionValue"/>
             <entity-create value-field="approximatedFunctionValue"/>
             <set field="approximatedFunctionId" from="approximatedFunctionValue.approximatedFunctionId"/>
-
-            <set field="parametricPathFields" from="{approximatedFunctionId: approximatedFunctionId, profileEnumId: 'PppfTrajectoryProfile'}"/>
-            <entity-make-value entity-name="moqui.math.ParametricPath" value-field="parametricPathValue" map="parametricPathFields"/>
-            <entity-create value-field="parametricPathValue"/>
-
-            <set field="trajectoryFields" from="{approximatedFunctionId: approximatedFunctionId, actuationTypeEnumId: 'PtaVirtual',
-                controlMethodEnumId: 'PtcmNNControl'}"/>
-            <entity-make-value entity-name="moqui.math.Trajectory" value-field="trajectoryValue" map="trajectoryFields"/>
-            <entity-create value-field="trajectoryValue"/>
+            <service-call name="create#moqui.math.ParametricPath"
+                    in-map="{approximatedFunctionId:approximatedFunctionId, profileEnumId:'PppfTrajectoryProfile'}"/>
+            <service-call name="create#moqui.math.Trajectory"
+                    in-map="{approximatedFunctionId:approximatedFunctionId, actuationTypeEnumId:'PtaVirtual', controlMethodEnumId:'PtcmNNControl'}"/>
 
             <set field="stepMs" from="waypointCount > 1 ? 1000.0 / (waypointCount - 1) : 0.0"/>
-            <set field="waypointIndex" from="0" type="Integer"/>
+            <set field="waypointIndex" from="0"/>
             <iterate list="waypoints" entry="waypoint">
-                <set field="waypointVectorFields" from="{vectorTypeEnumId: 'VtOrdinary', purposeEnumId: 'VpPosition', dimension: 6}"/>
-                <entity-make-value entity-name="moqui.math.Vector" value-field="waypointVectorValue" map="waypointVectorFields"/>
-                <script><![CDATA[waypointVectorValue.setSequencedIdPrimary()]]></script>
-                <entity-create value-field="waypointVectorValue"/>
-                <set field="waypointVectorId" from="waypointVectorValue.vectorId"/>
-
-                <set field="poseIndex" from="0" type="Integer"/>
-                <iterate list="waypoint" entry="poseValue">
-                    <set field="waypointComponentFields" from="{vectorId: waypointVectorId, dimensionIndex: poseIndex,
-                        componentTypeEnumId: 'VctCanonical', realValue: poseValue}"/>
-                    <entity-make-value entity-name="moqui.math.VectorComponent" value-field="waypointComponentValue" map="waypointComponentFields"/>
-                    <script><![CDATA[waypointComponentValue.setSequencedIdPrimary()]]></script>
-                    <entity-create value-field="waypointComponentValue"/>
-                    <set field="poseIndex" from="poseIndex + 1" type="Integer"/>
-                </iterate>
-
-                <set field="sampleTypeEnumId" from="waypointIndex == 0 ? 'AfstStartPoint' : (waypointIndex == (waypointCount - 1) ? 'AfstEndPoint' : 'AfstWaypoint')"/>
-                <set field="sampleFields" from="{approximatedFunctionId: approximatedFunctionId, sampleCode: 'WP' + String(waypointIndex).padStart(4, '0'),
-                    sampleName: 'Waypoint ' + waypointIndex, sequenceNum: waypointIndex, sampleTypeEnumId: sampleTypeEnumId,
-                    sampleVectorId: waypointVectorId}"/>
-                <entity-make-value entity-name="moqui.math.ApproximatedFunctionSample" value-field="sampleValue" map="sampleFields"/>
-                <script><![CDATA[sampleValue.setSequencedIdSecondary()]]></script>
+                <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="waypointVector"
+                        in-map="{values:waypoint, purposeEnumId:'VpPosition'}"/>
+                <entity-make-value entity-name="moqui.math.ApproximatedFunctionSample" value-field="sampleValue"
+                        map="{approximatedFunctionId:approximatedFunctionId, sampleCode:'WP' + String(waypointIndex).padStart(4, '0'),
+                            sampleName:'Waypoint ' + waypointIndex, sequenceNum:waypointIndex, sampleVectorId:waypointVector.vectorId,
+                            sampleTypeEnumId:waypointIndex === 0 ? 'AfstStartPoint' : (waypointIndex === waypointCount - 1 ? 'AfstEndPoint' : 'AfstWaypoint')}"/>
+                <entity-sequenced-id-secondary value-field="sampleValue"/>
                 <entity-create value-field="sampleValue"/>
-                <set field="sampleId" from="sampleValue.approximatedFunctionSampleId"/>
-
-                <set field="pathPointFields" from="{approximatedFunctionId: approximatedFunctionId, approximatedFunctionSampleId: sampleId}"/>
-                <entity-make-value entity-name="moqui.math.ParametricPathPoint" value-field="pathPointValue" map="pathPointFields"/>
-                <entity-create value-field="pathPointValue"/>
-
-                <set field="trajectoryPointFields" from="{approximatedFunctionId: approximatedFunctionId,
-                    approximatedFunctionSampleId: sampleId, pointTimeOffsetMillis: waypointIndex * stepMs}"/>
-                <entity-make-value entity-name="moqui.math.TrajectoryPoint" value-field="trajectoryPointValue" map="trajectoryPointFields"/>
-                <entity-create value-field="trajectoryPointValue"/>
-
-                <set field="waypointIndex" from="waypointIndex + 1" type="Integer"/>
+                <service-call name="create#moqui.math.ParametricPathPoint"
+                        in-map="{approximatedFunctionId:approximatedFunctionId, approximatedFunctionSampleId:sampleValue.approximatedFunctionSampleId}"/>
+                <service-call name="create#moqui.math.TrajectoryPoint"
+                        in-map="{approximatedFunctionId:approximatedFunctionId, approximatedFunctionSampleId:sampleValue.approximatedFunctionSampleId,
+                            pointTimeOffsetMillis:waypointIndex * stepMs}"/>
+                <set field="waypointIndex" from="waypointIndex + 1"/>
             </iterate>
 
-            <set field="inputVectorList" from="[{name: 'tcp_start', values: startPoseList}, {name: 'tcp_goal', values: goalPoseList}]"/>
-            <set field="inputVectorIdList" from="[]" type="NewList"/>
-            <iterate list="inputVectorList" entry="inputVector">
-                <set field="inputVectorFields" from="{vectorTypeEnumId: 'VtOrdinary', purposeEnumId: 'VpPosition',
-                    dimension: 6, name: inputVector.name}"/>
-                <entity-make-value entity-name="moqui.math.Vector" value-field="inputVectorValue" map="inputVectorFields"/>
-                <script><![CDATA[inputVectorValue.setSequencedIdPrimary()]]></script>
-                <entity-create value-field="inputVectorValue"/>
-                <script><![CDATA[inputVectorIdList.push(inputVectorValue.vectorId);]]></script>
-
-                <set field="poseIndex" from="0" type="Integer"/>
-                <iterate list="inputVector.values" entry="poseValue">
-                    <set field="inputVectorComponentFields" from="{vectorId: inputVectorValue.vectorId, dimensionIndex: poseIndex,
-                        componentTypeEnumId: 'VctCanonical', realValue: poseValue}"/>
-                    <entity-make-value entity-name="moqui.math.VectorComponent" value-field="inputVectorComponentValue" map="inputVectorComponentFields"/>
-                    <script><![CDATA[inputVectorComponentValue.setSequencedIdPrimary()]]></script>
-                    <entity-create value-field="inputVectorComponentValue"/>
-                    <set field="poseIndex" from="poseIndex + 1" type="Integer"/>
-                </iterate>
+            <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="startVector"
+                    in-map="{name:'tcp_start', values:startPoseList, purposeEnumId:'VpPosition'}"/>
+            <service-call name="moqui.device.TrajectoryPlannerServices.create#PoseVector" out-map="goalVector"
+                    in-map="{name:'tcp_goal', values:goalPoseList, purposeEnumId:'VpPosition'}"/>
+            <set field="modelDataList" from="[
+                {dataTypeEnumId:'MmdtApproxFunc', purposeEnumId:'MmdpModelOutputs', approximatedFunctionId:approximatedFunctionId, sequenceNum:1},
+                {dataTypeEnumId:'MmdtVector', purposeEnumId:'MmdpModelInputs', vectorId:startVector.vectorId, sequenceNum:2},
+                {dataTypeEnumId:'MmdtVector', purposeEnumId:'MmdpModelInputs', vectorId:goalVector.vectorId, sequenceNum:3}]"/>
+            <iterate list="modelDataList" entry="modelData">
+                <entity-make-value entity-name="moqui.math.MathModelData" value-field="modelDataValue"
+                        map="Object.assign({mathModelId:mathModelId, generatedByRunId:runId}, modelData)"/>
+                <entity-sequenced-id-primary value-field="modelDataValue"/>
+                <entity-create value-field="modelDataValue"/>
             </iterate>
 
-            <set field="startVectorId" from="inputVectorIdList[0]"/>
-            <set field="goalVectorId" from="inputVectorIdList[1]"/>
-
-            <set field="outputModelDataFields" from="{mathModelId: mathModelId, dataTypeEnumId: 'MmdtApproxFunc',
-                purposeEnumId: 'MmdpModelOutputs', generatedByRunId: runId, approximatedFunctionId: approximatedFunctionId,
-                sequenceNum: 1}"/>
-            <entity-make-value entity-name="moqui.math.MathModelData" value-field="outputModelDataValue" map="outputModelDataFields"/>
-            <script><![CDATA[outputModelDataValue.setSequencedIdPrimary()]]></script>
-            <entity-create value-field="outputModelDataValue"/>
-
-            <set field="startModelDataFields" from="{mathModelId: mathModelId, dataTypeEnumId: 'MmdtVector',
-                purposeEnumId: 'MmdpModelInputs', generatedByRunId: runId, vectorId: startVectorId, sequenceNum: 2}"/>
-            <entity-make-value entity-name="moqui.math.MathModelData" value-field="startModelDataValue" map="startModelDataFields"/>
-            <script><![CDATA[startModelDataValue.setSequencedIdPrimary()]]></script>
-            <entity-create value-field="startModelDataValue"/>
-
-            <set field="goalModelDataFields" from="{mathModelId: mathModelId, dataTypeEnumId: 'MmdtVector',
-                purposeEnumId: 'MmdpModelInputs', generatedByRunId: runId, vectorId: goalVectorId, sequenceNum: 3}"/>
-            <entity-make-value entity-name="moqui.math.MathModelData" value-field="goalModelDataValue" map="goalModelDataFields"/>
-            <script><![CDATA[goalModelDataValue.setSequencedIdPrimary()]]></script>
-            <entity-create value-field="goalModelDataValue"/>
-
-            <script><![CDATA[
-                const elapsed = Date.now() - t0;
-                const totalDurationSec = elapsed > 0 ? elapsed / 1000.0 : 0.001;
-                resultsJson = JSON.stringify({ approximatedFunctionId: approximatedFunctionId, waypointCount: waypointCount });
-
-                const runRef = ec.entity.find("moqui.math.MathModelRun").condition("mathModelRunId", runId).one();
-                if (runRef) {
-                    runRef.setFields({
-                        endDate: ec.user.nowTimestamp,
-                        runningTimeMillis: elapsed,
-                        approximatedFunctionId: approximatedFunctionId,
-                        results: resultsJson
-                    }, true, null, null);
-                    runRef.update();
-                }
-
-                perfFields = {
-                    mathModelRunId: runId,
-                    totalDurationSec: totalDurationSec,
-                    inferenceLatencyMs: Number(inferenceLatencyMs || 0),
-                    throughputSamplesSec: Number(waypointCount || 0) / totalDurationSec
-                };
-            ]]></script>
-            <entity-make-value entity-name="moqui.math.MathModelPerf" value-field="perfValue" map="perfFields"/>
-            <script><![CDATA[perfValue.setSequencedIdPrimary()]]></script>
+            <set field="elapsed" from="Date.now() - t0"/>
+            <set field="totalDurationSec" from="elapsed > 0 ? elapsed / 1000.0 : 0.001"/>
+            <entity-find-one entity-name="moqui.math.MathModelRun" value-field="finishedRun" for-update="true">
+                <field-map field-name="mathModelRunId" from="runId"/>
+            </entity-find-one>
+            <entity-set value-field="finishedRun" map="{endDate:ec.user.nowTimestamp, runningTimeMillis:elapsed,
+                approximatedFunctionId:approximatedFunctionId,
+                results:JSON.stringify({approximatedFunctionId:approximatedFunctionId, waypointCount:waypointCount})}"/>
+            <entity-update value-field="finishedRun"/>
+            <entity-make-value entity-name="moqui.math.MathModelPerf" value-field="perfValue"
+                    map="{mathModelRunId:runId, totalDurationSec:totalDurationSec, inferenceLatencyMs:Number(inferenceLatencyMs || 0),
+                        throughputSamplesSec:Number(waypointCount || 0) / totalDurationSec}"/>
+            <entity-sequenced-id-primary value-field="perfValue"/>
             <entity-create value-field="perfValue"/>
             <set field="mathModelRunId" from="runId"/>
             <set field="mathModelPerfId" from="perfValue.mathModelPerfId"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="DeviceImage">
+        <description>The image of a device for an inference provider: the DeviceContent given, or the latest DCntImage
+            content of the device, read and encoded as standard base64.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+            <parameter name="deviceContentId"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="deviceContent" type="EntityValue"/>
+            <parameter name="imageBase64"/>
+        </out-parameters>
+        <actions>
+            <entity-find-one entity-name="moqui.device.Device" value-field="device">
+                <field-map field-name="deviceId"/>
+            </entity-find-one>
+            <if condition="!device"><return error="true" message="Device ${deviceId} not found"/></if>
+            <if condition="deviceContentId"><then>
+                <entity-find-one entity-name="moqui.device.DeviceContent" value-field="deviceContent">
+                    <field-map field-name="deviceContentId"/>
+                </entity-find-one>
+                <if condition="!deviceContent || deviceContent.deviceId != deviceId">
+                    <return error="true" message="DeviceContent ${deviceContentId} not found for device ${deviceId}"/>
+                </if>
+            </then><else>
+                <service-call name="moqui.device.DeviceServices.get#DeviceContentLocation" out-map="latest"
+                        in-map="{deviceId:deviceId, contentTypeEnumIdList:['DCntImage']}"/>
+                <set field="deviceContent" from="latest.deviceContent"/>
+                <if condition="!deviceContent"><return error="true" message="No image DeviceContent found for device ${deviceId}"/></if>
+            </else></if>
+            <if condition="!deviceContent.contentLocation">
+                <return error="true" message="DeviceContent ${deviceContent.deviceContentId} has no contentLocation"/>
+            </if>
+            <set field="imageBytes" from="ec.resource.getLocationReference(deviceContent.contentLocation).openStream()?.readAllBytes()"/>
+            <if condition="imageBytes == null"><return error="true" message="Image file does not exist."/></if>
+            <set field="imageBase64" from="StringUtilities.base64Encode(imageBytes)"/>
+        </actions>
+    </service>
+
+    <service verb="check" noun="NumberList">
+        <description>A list of decimal numbers from a provider response: no value gives no list; an empty entry or fewer
+            than minSize values is an error.</description>
+        <in-parameters>
+            <parameter name="values"/>
+            <parameter name="fieldName" required="true"/>
+            <parameter name="minSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="numbers" type="List"/>
+        </out-parameters>
+        <actions>
+            <if condition="values == null"><return/></if>
+            <set field="sourceList" from="Array.isArray(values) ? values : [values]"/>
+            <set field="numbers" from="[]"/>
+            <set field="index" from="0"/>
+            <iterate list="sourceList" entry="entry">
+                <if condition="entry == null || String(entry).trim() === ''">
+                    <return error="true" message="${fieldName}[${index}] is empty."/>
+                </if>
+                <set field="numbers" from="numbers.concat([toDecimal(String(entry))])"/>
+                <set field="index" from="index + 1"/>
+            </iterate>
+            <if condition="minSize != null &amp;&amp; numbers.length &lt; minSize">
+                <return error="true" message="${fieldName} must contain at least ${minSize} values."/>
+            </if>
+        </actions>
+    </service>
+
+    <service verb="check" noun="Pose">
+        <description>A 6-DOF TCP pose: exactly six finite numbers.</description>
+        <in-parameters>
+            <parameter name="pose"/>
+            <parameter name="fieldName" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="poseList" type="List"/>
+        </out-parameters>
+        <actions>
+            <if condition="!Array.isArray(pose)">
+                <return error="true" message="${fieldName} must be an Array with exactly 6 numeric values."/>
+            </if>
+            <if condition="pose.length !== 6">
+                <return error="true" message="${fieldName} must contain exactly 6 numeric values, found ${pose.length}."/>
+            </if>
+            <set field="poseList" from="pose.map(value => Number(value))"/>
+            <set field="badIndex" from="poseList.findIndex(value => !Number.isFinite(value))"/>
+            <if condition="badIndex >= 0">
+                <return error="true" message="${fieldName}[${badIndex}] must be numeric, found '${pose[badIndex]}'."/>
+            </if>
+        </actions>
+    </service>
+
+    <service verb="create" noun="PoseVector">
+        <description>A Vector with one canonical VectorComponent per value, in order.</description>
+        <in-parameters>
+            <parameter name="values" type="List" required="true"/>
+            <parameter name="name"/>
+            <parameter name="description"/>
+            <parameter name="vectorSpaceEnumId"/>
+            <parameter name="purposeEnumId"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="vectorId"/>
+        </out-parameters>
+        <actions>
+            <entity-make-value entity-name="moqui.math.Vector" value-field="vectorValue"
+                    map="{vectorTypeEnumId:'VtOrdinary', purposeEnumId:purposeEnumId, vectorSpaceEnumId:vectorSpaceEnumId,
+                        name:name, description:description, dimension:values.length}"/>
+            <entity-sequenced-id-primary value-field="vectorValue"/>
+            <entity-create value-field="vectorValue"/>
+            <set field="vectorId" from="vectorValue.vectorId"/>
+            <set field="dimensionIndex" from="0"/>
+            <iterate list="values" entry="value">
+                <entity-make-value entity-name="moqui.math.VectorComponent" value-field="componentValue"
+                        map="{vectorId:vectorId, dimensionIndex:dimensionIndex, componentTypeEnumId:'VctCanonical', realValue:value}"/>
+                <entity-sequenced-id-primary value-field="componentValue"/>
+                <entity-create value-field="componentValue"/>
+                <set field="dimensionIndex" from="dimensionIndex + 1"/>
+            </iterate>
+        </actions>
+    </service>
+
+    <service verb="infer" noun="PlannerWaypoints">
+        <description>The waypoints of the planner mode: linear-demo interpolates ten poses, native runs the ONNX model in
+            process (OnnxServices.infer#TrajectoryWaypoints), remote calls the inference provider. A failure is
+            errorMessage with no waypoints.</description>
+        <in-parameters>
+            <parameter name="plannerMode" required="true"/>
+            <parameter name="mathModelId"/>
+            <parameter name="startPose" type="List" required="true"/>
+            <parameter name="goalPose" type="List" required="true"/>
+            <parameter name="onnxProfile"/>
+            <parameter name="obstacle" type="Map"/>
+            <parameter name="inferenceUrl"/>
+            <parameter name="apiKey"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="waypoints" type="List"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
+        <actions>
+            <if condition="plannerMode === 'linear-demo'"><then>
+                <set field="candidates" from="Array.from({length:10}, (_, i) => startPose.map((v, j) => v + (i / 9) * (goalPose[j] - v)))"/>
+            </then><else-if condition="plannerMode === 'native'">
+                <service-call name="moqui.device.OnnxServices.infer#TrajectoryWaypoints" out-map="nativeOut" ignore-error="true"
+                        in-map="{mathModelId:mathModelId, startPose:startPose, goalPose:goalPose, onnxProfile:onnxProfile, obstacle:obstacle || null}"/>
+                <set field="candidates" from="nativeOut?.waypoints"/>
+                <if condition="!candidates"><set field="errorMessage" value="Native ONNX inference returned an error."/><return/></if>
+            </else-if><else>
+                <service-call name="moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint" out-map="remoteOut" ignore-error="true"
+                        in-map="{url:inferenceUrl, apiKey:apiKey, payload:Object.assign({mathModelId:mathModelId, startPose:startPose,
+                            goalPose:goalPose}, obstacle ? {obstacle:obstacle} : {})}"/>
+                <set field="candidates" from="remoteOut?.response?.waypoints"/>
+                <if condition="!candidates"><set field="errorMessage" value="Inference provider returned an error."/><return/></if>
+            </else></if>
+            <if condition="!Array.isArray(candidates) || candidates.length &lt; 2 || candidates.some(point => !Array.isArray(point)
+                    || point.length !== 6 || point.some(value => typeof value !== 'number' || !Number.isFinite(value)))">
+                <set field="errorMessage" value="Planner must return at least two waypoints, each with six finite numeric coordinates."/>
+                <return/>
+            </if>
+            <set field="waypoints" from="candidates"/>
         </actions>
     </service>
 
@@ -712,33 +600,34 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="waypointCount" type="Integer"/>
             <parameter name="vectorSpaceEnumId"/>
         </out-parameters>
-        <actions><script><![CDATA[
-            const samples = ec.entity.find("moqui.math.ApproximatedFunctionSample")
-                .condition("approximatedFunctionId", approximatedFunctionId).orderBy("sequenceNum").list();
-            if (!samples || samples.length === 0) {
-                ec.message.addError(`No ApproximatedFunctionSample found for approximatedFunctionId ${approximatedFunctionId}.`);
-                return;
-            }
-            const approxFunc = ec.entity.find("moqui.math.ApproximatedFunction")
-                .condition("approximatedFunctionId", approximatedFunctionId).one();
-            vectorSpaceEnumId = approxFunc?.vectorSpaceEnumId || null;
-            const axisNames = vectorSpaceEnumId === 'EngTcpPose6Dof' ?
-                ['X', 'Y', 'Z', 'A', 'B', 'C'] : ['J1', 'J2', 'J3', 'J4', 'J5', 'J6'];
-            // a decimal field is a Decimal object in the script: toNumber() reads it
-            const toNumber = (value) => value != null && typeof value.toNumber === 'function' ? value.toNumber() : Number(value);
-            axes = {};
-            for (const sample of samples) {
-                const components = ec.entity.find("moqui.math.VectorComponent")
-                    .condition("vectorId", sample.sampleVectorId).orderBy("dimensionIndex").list();
-                for (const comp of (components || [])) {
-                    const dim = parseInt(comp.dimensionIndex, 10);
-                    const axisKey = dim < axisNames.length ? axisNames[dim] : `D${dim}`;
-                    if (!axes[axisKey]) axes[axisKey] = [];
-                    axes[axisKey].push(toNumber(comp.realValue));
-                }
-            }
-            waypointCount = samples.length;
-        ]]></script></actions>
+        <actions>
+            <entity-find entity-name="moqui.math.ApproximatedFunctionSample" list="samples">
+                <econdition field-name="approximatedFunctionId"/>
+                <order-by field-name="sequenceNum"/>
+            </entity-find>
+            <if condition="!samples?.length">
+                <return error="true" message="No ApproximatedFunctionSample found for approximatedFunctionId ${approximatedFunctionId}."/>
+            </if>
+            <entity-find-one entity-name="moqui.math.ApproximatedFunction" value-field="approxFunc">
+                <field-map field-name="approximatedFunctionId"/>
+            </entity-find-one>
+            <set field="vectorSpaceEnumId" from="approxFunc?.vectorSpaceEnumId || null"/>
+            <set field="axisNames" from="vectorSpaceEnumId === 'EngTcpPose6Dof' ? ['X', 'Y', 'Z', 'A', 'B', 'C'] : ['J1', 'J2', 'J3', 'J4', 'J5', 'J6']"/>
+            <set field="axes" from="{}"/>
+            <iterate list="samples" entry="sample">
+                <entity-find entity-name="moqui.math.VectorComponent" list="components">
+                    <econdition field-name="vectorId" from="sample.sampleVectorId"/>
+                    <order-by field-name="dimensionIndex"/>
+                </entity-find>
+                <iterate list="components" entry="comp">
+                    <set field="dim" from="parseInt(comp.dimensionIndex, 10)"/>
+                    <set field="axisKey" from="dim &lt; axisNames.length ? axisNames[dim] : 'D' + dim"/>
+                    <!-- a decimal field is a Decimal object in the script: toNumber() reads it -->
+                    <set field="axes[axisKey]" from="(axes[axisKey] || []).concat([(comp.realValue != null &amp;&amp; typeof comp.realValue.toNumber === 'function' ? comp.realValue.toNumber() : Number(comp.realValue))])"/>
+                </iterate>
+            </iterate>
+            <set field="waypointCount" from="samples.length"/>
+        </actions>
     </service>
 
     <service verb="export" noun="Trajectory" authenticate="false" transaction="ignore">
@@ -763,27 +652,19 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="status"/>
             <parameter name="errorMessage"/>
         </out-parameters>
-        <actions><script><![CDATA[
-            const dr = ec.entity.find("moqui.device.DeviceRequest").condition("requestName", requestName).one();
-            if (!dr) {
-                ec.message.addError(`DeviceRequest ${requestName} not found.`);
-                return;
-            }
-            const trajectory = ec.service.sync().name("moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes")
-                .parameters({approximatedFunctionId: approximatedFunctionId}).call();
-            if (ec.message.hasError()) return;
-            const payload = {
-                requestName: requestName,
-                approximatedFunctionId: approximatedFunctionId,
-                waypointCount: trajectory.waypointCount,
-                mqttTopic: dr.query || '',
-                axes: trajectory.axes
-            };
-            ec.logger.info(`Exporting trajectory ${approximatedFunctionId} (${trajectory.waypointCount} waypoints) with request ${requestName}`);
-            const result = ec.service.sync().name("moqui.device.DeviceServices.run#DeviceRequest")
-                .parameters({requestName: requestName, payload: payload}).call();
-            status = result?.status;
-            errorMessage = result?.errorMessage;
-        ]]></script></actions>
+        <actions>
+            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request">
+                <field-map field-name="requestName"/>
+            </entity-find-one>
+            <if condition="!request"><return error="true" message="DeviceRequest ${requestName} not found."/></if>
+            <service-call name="moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes" out-map="trajectory"
+                    in-map="{approximatedFunctionId:approximatedFunctionId}"/>
+            <log level="info" message="Exporting trajectory ${approximatedFunctionId} (${trajectory.waypointCount} waypoints) with request ${requestName}"/>
+            <service-call name="moqui.device.DeviceServices.run#DeviceRequest" out-map="result"
+                    in-map="{requestName:requestName, payload:{requestName:requestName, approximatedFunctionId:approximatedFunctionId,
+                        waypointCount:trajectory.waypointCount, mqttTopic:request.query || '', axes:trajectory.axes}}"/>
+            <set field="status" from="result.status"/>
+            <set field="errorMessage" from="result.errorMessage"/>
+        </actions>
     </service>
 </services>

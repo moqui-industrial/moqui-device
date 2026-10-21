@@ -128,155 +128,102 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="updatedDeviceFieldList" type="List"/>
         </out-parameters>
         <actions>
-            <script><![CDATA[
-                const deviceConfig = ec.entity.find("moqui.device.DeviceConfig")
-                    .condition("deviceConfigId", deviceConfigId)
-                    .useCache(true)
-                    .one();
-                if (!deviceConfig) {
-                    ec.message.addError(`DeviceConfig not found for deviceConfigId [${deviceConfigId}].`);
-                    return;
-                }
+            <entity-find-one entity-name="moqui.device.DeviceConfig" value-field="deviceConfig" cache="true">
+                <field-map field-name="deviceConfigId"/>
+            </entity-find-one>
+            <if condition="!deviceConfig">
+                <return error="true" message="DeviceConfig not found for deviceConfigId [${deviceConfigId}]."/>
+            </if>
+            <entity-find-one entity-name="moqui.device.Device" value-field="device" for-update="true">
+                <field-map field-name="deviceId"/>
+            </entity-find-one>
+            <if condition="!device"><return error="true" message="Device not found for deviceId [${deviceId}]."/></if>
 
-                const device = ec.entity.find("moqui.device.Device")
-                    .condition("deviceId", deviceId)
-                    .useCache(false)
-                    .one();
-                if (!device) {
-                    ec.message.addError(`Device not found for deviceId [${deviceId}].`);
-                    return;
-                }
+            <if condition="validateDeviceType &amp;&amp; deviceConfig.deviceTypeEnumId">
+                <service-call name="org.moqui.impl.BasicServices.find#EnumerationByParent" out-map="enumResult"
+                        in-map="{parentEnumId:deviceConfig.deviceTypeEnumId, includeParent:true, includeNested:true, orderByField:'description'}"/>
+                <if condition="!Array.from(enumResult.enumIdSet ?? []).includes(device.deviceTypeEnumId)">
+                    <return error="true" message="Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}]."/>
+                </if>
+            </if>
 
-                if (validateDeviceType && deviceConfig.deviceTypeEnumId) {
-                    const enumResult = ec.service.sync().name("org.moqui.impl.BasicServices.find#EnumerationByParent")
-                        .parameters({
-                            parentEnumId: deviceConfig.deviceTypeEnumId,
-                            includeParent: true,
-                            includeNested: true,
-                            orderByField: "description"
-                        }).call();
+            <set field="commonParameterCount" from="0"/>
+            <set field="updatedParameterCount" from="0"/>
+            <set field="skippedParameterKeySet" from="[]"/>
+            <set field="updatedParameterIdList" from="[]"/>
+            <set field="updatedDeviceFieldList" from="[]"/>
+            <if condition="copyDeviceFields">
+                <set field="deviceFields" from="['controlMethodEnumId', 'approximatedFunctionId']
+                    .filter(field => deviceConfig[field] &amp;&amp; device[field] !== deviceConfig[field])"/>
+                <set field="updatedDeviceFieldList" from="deviceFields"/>
+                <if condition="deviceFields.length &amp;&amp; !dryRun">
+                    <iterate list="deviceFields" entry="field"><set field="device[field]" from="deviceConfig[field]"/></iterate>
+                    <entity-update value-field="device"/>
+                </if>
+            </if>
 
-                    const enumIdSet = enumResult.enumIdSet;
-                    const hasType = Array.isArray(enumIdSet) ? enumIdSet.includes(device.deviceTypeEnumId)
-                        : (enumIdSet && typeof enumIdSet.has === 'function' ? enumIdSet.has(device.deviceTypeEnumId)
-                        : (enumIdSet && typeof enumIdSet.includes === 'function' ? enumIdSet.includes(device.deviceTypeEnumId) : false));
+            <entity-find entity-name="moqui.math.Parameter" list="sourceParameterList" cache="true">
+                <econdition field-name="deviceConfigId"/>
+            </entity-find>
+            <entity-find entity-name="moqui.math.Parameter" list="targetParameterList" for-update="true">
+                <econdition field-name="deviceId"/>
+            </entity-find>
+            <set field="sourceParameterCount" from="sourceParameterList?.length ?? 0"/>
+            <set field="targetParameterCount" from="targetParameterList?.length ?? 0"/>
 
-                    if (!hasType) {
-                        ec.message.addError(`Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}].`);
-                        return;
-                    }
-                }
+            <!-- source and target parameters match by parameterDefId|parameterAlias; a duplicate key is unsafe -->
+            <set field="sourceByKey" from="{}"/>
+            <set field="duplicateSourceKeys" from="[]"/>
+            <iterate list="sourceParameterList" entry="sourceParam">
+                <if condition="!sourceParam.parameterDefId"><continue/></if>
+                <set field="parameterKey" from="(sourceParam.parameterDefId || '') + '|' + (sourceParam.parameterAlias || '')"/>
+                <if condition="sourceByKey[parameterKey]"><then>
+                    <set field="duplicateSourceKeys" from="duplicateSourceKeys.concat([parameterKey])"/>
+                </then><else>
+                    <set field="sourceByKey[parameterKey]" from="sourceParam"/>
+                </else></if>
+            </iterate>
+            <if condition="duplicateSourceKeys.length">
+                <return error="true" message="DeviceConfig [${deviceConfigId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateSourceKeys.join(', ')}. Cannot apply DeviceConfig safely."/>
+            </if>
+            <set field="targetByKey" from="{}"/>
+            <set field="duplicateTargetKeys" from="[]"/>
+            <iterate list="targetParameterList" entry="targetParam">
+                <if condition="!targetParam.parameterDefId"><continue/></if>
+                <set field="parameterKey" from="(targetParam.parameterDefId || '') + '|' + (targetParam.parameterAlias || '')"/>
+                <if condition="targetByKey[parameterKey]"><then>
+                    <set field="duplicateTargetKeys" from="duplicateTargetKeys.concat([parameterKey])"/>
+                </then><else>
+                    <set field="targetByKey[parameterKey]" from="targetParam"/>
+                </else></if>
+            </iterate>
+            <if condition="duplicateTargetKeys.length">
+                <return error="true" message="Device [${deviceId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateTargetKeys.join(', ')}. Cannot apply DeviceConfig safely."/>
+            </if>
 
-                sourceParameterCount = 0;
-                targetParameterCount = 0;
-                commonParameterCount = 0;
-                updatedParameterCount = 0;
-                skippedParameterKeySet = [];
-                updatedParameterIdList = [];
-                updatedDeviceFieldList = [];
-
-                if (copyDeviceFields) {
-                    let deviceChanged = false;
-
-                    if (deviceConfig.controlMethodEnumId && device.controlMethodEnumId !== deviceConfig.controlMethodEnumId) {
-                        updatedDeviceFieldList.push("controlMethodEnumId");
-                        if (!dryRun) {
-                            device.controlMethodEnumId = deviceConfig.controlMethodEnumId;
-                            deviceChanged = true;
-                        }
-                    }
-
-                    if (deviceConfig.approximatedFunctionId && device.approximatedFunctionId !== deviceConfig.approximatedFunctionId) {
-                        updatedDeviceFieldList.push("approximatedFunctionId");
-                        if (!dryRun) {
-                            device.approximatedFunctionId = deviceConfig.approximatedFunctionId;
-                            deviceChanged = true;
-                        }
-                    }
-
-                    if (deviceChanged && !dryRun) device.update();
-                }
-
-                const sourceParameterList = ec.entity.find("moqui.math.Parameter")
-                    .condition("deviceConfigId", deviceConfigId)
-                    .useCache(true)
-                    .list();
-
-                const targetParameterList = ec.entity.find("moqui.math.Parameter")
-                    .condition("deviceId", deviceId)
-                    .useCache(false)
-                    .list();
-
-                sourceParameterCount = sourceParameterList ? sourceParameterList.length : 0;
-                targetParameterCount = targetParameterList ? targetParameterList.length : 0;
-
-                const makeParameterKey = (param) => {
-                    const parameterDefId = param.parameterDefId ? String(param.parameterDefId) : "";
-                    const parameterAlias = param.parameterAlias ? String(param.parameterAlias) : "";
-                    return `${parameterDefId}|${parameterAlias}`;
-                };
-
-                const sourceByKey = {};
-                const duplicateSourceKeys = [];
-                for (const sourceParam of (sourceParameterList || [])) {
-                    if (!sourceParam.parameterDefId) continue;
-                    const key = makeParameterKey(sourceParam);
-                    if (sourceByKey[key]) duplicateSourceKeys.push(key);
-                    else sourceByKey[key] = sourceParam;
-                }
-                if (duplicateSourceKeys.length > 0) {
-                    ec.message.addError(`DeviceConfig [${deviceConfigId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateSourceKeys.join(', ')}. Cannot apply DeviceConfig safely.`);
-                    return;
-                }
-
-                const targetByKey = {};
-                const duplicateTargetKeys = [];
-                for (const targetParam of (targetParameterList || [])) {
-                    if (!targetParam.parameterDefId) continue;
-                    const key = makeParameterKey(targetParam);
-                    if (targetByKey[key]) duplicateTargetKeys.push(key);
-                    else targetByKey[key] = targetParam;
-                }
-                if (duplicateTargetKeys.length > 0) {
-                    ec.message.addError(`Device [${deviceId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${duplicateTargetKeys.join(', ')}. Cannot apply DeviceConfig safely.`);
-                    return;
-                }
-
-                for (const [key, sourceParam] of Object.entries(sourceByKey)) {
-                    const targetParam = targetByKey[key];
-
-                    if (!targetParam) {
-                        skippedParameterKeySet.push(key);
-                        continue;
-                    }
-
-                    commonParameterCount++;
-                    let parameterChanged = false;
-
-                    if (targetParam.numericValue !== sourceParam.numericValue) {
-                        parameterChanged = true;
-                        if (!dryRun) targetParam.numericValue = sourceParam.numericValue;
-                    }
-                    if (targetParam.symbolicValue !== sourceParam.symbolicValue) {
-                        parameterChanged = true;
-                        if (!dryRun) targetParam.symbolicValue = sourceParam.symbolicValue;
-                    }
-                    if (targetParam.parameterEnumId !== sourceParam.parameterEnumId) {
-                        parameterChanged = true;
-                        if (!dryRun) targetParam.parameterEnumId = sourceParam.parameterEnumId;
-                    }
-                    if (copySequenceNum && targetParam.sequenceNum !== sourceParam.sequenceNum) {
-                        parameterChanged = true;
-                        if (!dryRun) targetParam.sequenceNum = sourceParam.sequenceNum;
-                    }
-
-                    if (parameterChanged) {
-                        updatedParameterCount++;
-                        updatedParameterIdList.push(targetParam.parameterId);
-                        if (!dryRun) targetParam.update();
-                    }
-                }
-            ]]></script>
+            <iterate list="Object.keys(sourceByKey)" entry="parameterKey">
+                <set field="sourceParam" from="sourceByKey[parameterKey]"/>
+                <set field="targetParam" from="targetByKey[parameterKey]"/>
+                <if condition="!targetParam">
+                    <set field="skippedParameterKeySet" from="skippedParameterKeySet.concat([parameterKey])"/>
+                    <continue/>
+                </if>
+                <set field="commonParameterCount" from="commonParameterCount + 1"/>
+                <set field="changedFields" from="['numericValue', 'symbolicValue', 'parameterEnumId'].concat(copySequenceNum ? ['sequenceNum'] : [])
+                    .filter(field => {
+                        // by value: a decimal is an object, so !== would always differ
+                        const a = targetParam[field], b = sourceParam[field];
+                        return !((a == null || b == null) ? a == b : (typeof a.eq === 'function' ? a.eq(b) : String(a) === String(b)));
+                    })"/>
+                <if condition="changedFields.length">
+                    <set field="updatedParameterCount" from="updatedParameterCount + 1"/>
+                    <set field="updatedParameterIdList" from="updatedParameterIdList.concat([targetParam.parameterId])"/>
+                    <if condition="!dryRun">
+                        <iterate list="changedFields" entry="field"><set field="targetParam[field]" from="sourceParam[field]"/></iterate>
+                        <entity-update value-field="targetParam"/>
+                    </if>
+                </if>
+            </iterate>
         </actions>
     </service>
 
@@ -414,25 +361,16 @@ along with this software (see the LICENSE.md file). If not, see
                     <order-by field-name="sequenceNum"/>
                     <order-by field-name="requestName"/>
                 </entity-find>
-                <script><![CDATA[
-                    secondaryResults = [];
-                    for (const mirror of (mirrorRequestList || [])) {
-                        let out = null, failure = null;
-                        try {
-                            out = ec.service.sync().name("moqui.device.DeviceServices.run#DeviceRequest").parameters({
-                                requestName: mirror.requestName, deviceContentId: deviceContentId, transferFiles: transferFiles}).call();
-                        } catch (e) {
-                            failure = String(e.message || e);
-                        }
-                        // a failed destination keeps its own error; this request completed
-                        if (ec.message.hasError()) {
-                            failure = failure || ec.message.getErrorsString();
-                            ec.message.clearErrors();
-                        }
-                        secondaryResults.push({requestName: mirror.requestName, status: failure ? (out?.status || 'failed') : out?.status,
-                            transferredFiles: out?.transferredFiles || [], errorMessage: failure || out?.errorMessage || null});
-                    }
-                ]]></script>
+                <set field="secondaryResults" from="[]"/>
+                <iterate list="mirrorRequestList" entry="mirror">
+                    <!-- a failed destination keeps its own error and notification; this request completed -->
+                    <set field="mirrorOut" from="null"/>
+                    <service-call name="moqui.device.DeviceServices.run#DeviceRequest" out-map="mirrorOut" ignore-error="true"
+                            in-map="{requestName:mirror.requestName, deviceContentId:deviceContentId, transferFiles:transferFiles}"/>
+                    <set field="secondaryResults" from="secondaryResults.concat([{requestName:mirror.requestName,
+                        status:mirrorOut?.status || 'failed', transferredFiles:mirrorOut?.transferredFiles || [],
+                        errorMessage:mirrorOut?.errorMessage || (mirrorOut?.status === 'completed' ? null : 'The error is in the Moqui log')}])"/>
+                </iterate>
             </if>
             <if condition="['DrtWrite', 'DrtConfigWrite', 'DrtContentTransfer'].includes(request.requestTypeEnumId)">
                 <service-call name="moqui.device.DeviceServices.notify#DeviceRequestResult" disable-authz="true"
@@ -440,7 +378,7 @@ along with this software (see the LICENSE.md file). If not, see
                         fileCount:(transferredFiles ?? []).length, errorMessage:errorMessage}" ignore-error="true"/>
             </if>
             <if condition="['failed', 'partial', 'uncertain'].includes(status)">
-                <script>ec.message.addError(errorMessage || `Device request ${requestName}: ${status}. Inspect itemResults.`);</script>
+                <message error="true">${errorMessage || ('Device request ' + requestName + ': ' + status + '. Inspect itemResults.')}</message>
             </if>
         </actions>
     </service>
