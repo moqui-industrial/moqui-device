@@ -12,8 +12,8 @@
  * <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
-use moqui_onnx_obstacle_example::{PlanRequest, PlanResponse, Planner, demo};
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use moqui_onnx_obstacle_example::{demo, PlanRequest, PlanResponse, Planner};
 use std::sync::{Arc, Mutex};
 
 async fn plan(

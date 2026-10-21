@@ -21,8 +21,8 @@ use std::collections::HashMap;
 #[cfg(feature = "onnx")]
 use std::sync::Mutex;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
 };
 
 #[cfg(feature = "onnx")]
@@ -54,7 +54,7 @@ impl Sessions {
         revision: &str,
         request: &PlanRequest,
     ) -> anyhow::Result<PlanResponse> {
-        use anyhow::{Context, bail, ensure};
+        use anyhow::{bail, ensure, Context};
         let metadata = std::fs::metadata(path)?;
         let external = std::fs::metadata(format!("{}.data", path.display()))
             .ok()

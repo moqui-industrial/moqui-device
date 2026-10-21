@@ -15,7 +15,7 @@
 // Shared inference implementation: this standalone crate does not link Moqui.
 #[path = "../../../src/onnx_planner.rs"]
 mod onnx_planner;
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 pub use onnx_planner::*;
 use std::path::Path;
 

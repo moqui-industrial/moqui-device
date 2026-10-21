@@ -171,6 +171,8 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="rowCount" type="Integer"/>
             <parameter name="transferredFiles" type="List"/>
             <parameter name="errorMessage"/>
+            <parameter name="secondaryResults" type="List"><description>The redundant destinations (see
+                run#DeviceRequest).</description></parameter>
         </out-parameters>
         <actions><script><![CDATA[
             const dr = ec.entity.find("moqui.device.DeviceRequest").condition("requestName", requestName).one();
@@ -197,6 +199,7 @@ along with this software (see the LICENSE.md file). If not, see
             status = result?.status;
             transferredFiles = result?.transferredFiles;
             errorMessage = result?.errorMessage;
+            secondaryResults = result?.secondaryResults;
             ec.logger.info(`DeviceConfig export of rule set ${ruleSetId} with request ${requestName}: ${status}, ${files.length} file(s), ${rowCount} line(s)`);
         ]]></script></actions>
     </service>

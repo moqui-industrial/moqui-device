@@ -311,6 +311,11 @@ along with this software (see the LICENSE.md file). If not, see
             A DrtConfigWrite request without items, whose query is a DeviceRuleSet, exports that rule set: the recipe
             files of moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles are sent as transferFiles.
             A write, recipe export or content transfer ends with notify#DeviceRequestResult.
+
+            Redundant destinations: after a completed DrtConfigWrite or DrtContentTransfer, the same files go to each
+            active DeviceRequest of the same type whose parentRequestName is this request, for example the second PLC
+            of a redundant pair. A failure there does not change this request's status: it is in secondaryResults and
+            in the notification of that request.
         </description>
         <in-parameters>
             <parameter name="requestName" required="true"/>
@@ -326,6 +331,8 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="subscriptionId"/>
             <parameter name="transferredFiles" type="List"/>
             <parameter name="errorMessage"/>
+            <parameter name="secondaryResults" type="List"><description>The redundant destinations: maps with
+                requestName, status, transferredFiles and errorMessage.</description></parameter>
         </out-parameters>
         <actions>
             <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request" cache="true"/>
@@ -399,6 +406,34 @@ along with this software (see the LICENSE.md file). If not, see
                 connection:connection, deviceContentId:deviceContentId, transferFiles:transferFiles, payload:payload,
                 bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList}"
                 out-map="context" disable-authz="true" transaction="ignore"/>
+            <if condition="['DrtConfigWrite', 'DrtContentTransfer'].includes(request.requestTypeEnumId) &amp;&amp; status === 'completed'">
+                <entity-find entity-name="moqui.device.DeviceRequest" list="mirrorRequestList">
+                    <econdition field-name="parentRequestName" from="requestName"/>
+                    <econdition field-name="requestTypeEnumId" from="request.requestTypeEnumId"/>
+                    <date-filter/>
+                    <order-by field-name="sequenceNum"/>
+                    <order-by field-name="requestName"/>
+                </entity-find>
+                <script><![CDATA[
+                    secondaryResults = [];
+                    for (const mirror of (mirrorRequestList || [])) {
+                        let out = null, failure = null;
+                        try {
+                            out = ec.service.sync().name("moqui.device.DeviceServices.run#DeviceRequest").parameters({
+                                requestName: mirror.requestName, deviceContentId: deviceContentId, transferFiles: transferFiles}).call();
+                        } catch (e) {
+                            failure = String(e.message || e);
+                        }
+                        // a failed destination keeps its own error; this request completed
+                        if (ec.message.hasError()) {
+                            failure = failure || ec.message.getErrorsString();
+                            ec.message.clearErrors();
+                        }
+                        secondaryResults.push({requestName: mirror.requestName, status: failure ? (out?.status || 'failed') : out?.status,
+                            transferredFiles: out?.transferredFiles || [], errorMessage: failure || out?.errorMessage || null});
+                    }
+                ]]></script>
+            </if>
             <if condition="['DrtWrite', 'DrtConfigWrite', 'DrtContentTransfer'].includes(request.requestTypeEnumId)">
                 <service-call name="moqui.device.DeviceServices.notify#DeviceRequestResult" disable-authz="true"
                     in-map="{requestName:requestName, status:status, itemCount:(itemResults ?? []).length,

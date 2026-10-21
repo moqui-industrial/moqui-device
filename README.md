@@ -354,6 +354,13 @@ request items, `run#DeviceRequest` passes `deviceContentId` and `transferFiles`
 (files to send) and `payload` (a message sent as it is), and returns `status`,
 `itemResults`, `subscriptionId`, `transferredFiles` and `errorMessage`.
 
+For redundant PLCs, a `DeviceRequest` whose `parentRequestName` is a recipe
+export (`DrtConfigWrite`) or content transfer (`DrtContentTransfer`) request of
+the same type is a second destination: after the primary completes,
+`run#DeviceRequest` sends it the same files and reports it in
+`secondaryResults`; its failure does not change the primary result.
+`DeviceTestData.xml` has the pair `VIRTUAL_PLC_01` / `VIRTUAL_PLC_02`.
+
 ### Device content transfer destination
 
 A `DrtContentTransfer` request sends a file to the endpoint in its own
@@ -685,7 +692,9 @@ the gateway/PLC projection adds that namespace only when emitting IEC paths.
 `data/HVACDemoGatewayData.xml` (type `demo`) is the runtime side of the same
 demo on MR-Moqui with moqui-device-gateway: the broker `DeviceConnection`
 `HVAC_DEMO_MQTT` (credentials from `MQTT_USERNAME`/`MQTT_PASSWORD` in the Moqui
-environment) and the PLC log subscription `HVAC_DEMO_PlcLogSubscribe`. It is not
+environment) and the PLC log subscription `HVAC_DEMO_PlcLogSubscribe`, restored
+after a start when the Moqui process runs with
+`device_gateway_device_id=HVAC_DEMO_GATEWAY`. It is not
 seed, because the gateway starts every active subscription after a start; load
 it explicitly with
 `./moq load -l runtime/component/moqui-device/data/HVACDemoGatewayData.xml`.

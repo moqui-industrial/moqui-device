@@ -12,7 +12,7 @@
  * <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use ort::{session::Session, value::Tensor};
 use serde::{Deserialize, Serialize};
 use std::path::Path;

@@ -35,7 +35,7 @@ pub fn infer_trajectory_waypoints(
 #[cfg(feature = "onnx")]
 fn infer(ec: &ExecutionContext, parameters: &Parameters) -> anyhow::Result<Parameters> {
     use crate::onnx_planner::PlanRequest;
-    use anyhow::{Context, ensure};
+    use anyhow::{ensure, Context};
     use moqui_lib::{json, object::Value};
 
     let model_id = parameters

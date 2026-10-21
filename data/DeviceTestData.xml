@@ -1636,4 +1636,61 @@ Grant of Patent License.
     <!-- Measurements moved to optional Mantle test file           -->
     <!-- ========================================================= -->
 
+
+    <!-- ========================================================= -->
+    <!-- Redundant PLC pair: the second PLC receives the same files -->
+    <!-- ========================================================= -->
+    <!-- VIRTUAL_PLC_02 is the redundant partner of VIRTUAL_PLC_01. Its export and transfer requests name the requests
+         of VIRTUAL_PLC_01 in parentRequestName: run#DeviceRequest sends them the same files after the primary. -->
+    <moqui.device.Device deviceId="VIRTUAL_PLC_02" parentDeviceId="DG_EDGE_01" deviceTypeEnumId="DtPLC"
+            statusTypeId="DeviceBasicStatus" statusFlowId="DeviceBasicStatusFlow" statusId="DbsStandstill"
+            description="Redundant partner of VIRTUAL_PLC_01" fromDate="2026-06-28 00:00:00"/>
+    <moqui.device.PhysicalDevice deviceId="VIRTUAL_PLC_02" deviceName="Virtual PLC 02" vendorName="OpenPLC"
+            modelName="Soft PLC" softwareApplication="OpenPLC Runtime"/>
+    <moqui.device.DeviceGroupMember deviceId="DG_EDGE_01" memberDeviceId="VIRTUAL_PLC_02" purposeEnumId="DgmpProcessPLC"
+            statusId="DgmsAlive" sequenceNum="15" description="Redundant PLC of the minimal test cell"/>
+    <moqui.device.DeviceRequest requestName="VIRTUAL_PLC_02_ExportProcess" parentRequestName="VIRTUAL_PLC_01_ExportProcess"
+            deviceId="VIRTUAL_PLC_02" requestTypeEnumId="DrtConfigWrite" purposeEnumId="DrpCommissioning"
+            routerEnumId="DrrDirect" runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
+            brokerUri="file:target/exported-config/plc-redundant" timeout="30000" fromDate="2026-06-28 00:00:00"
+            description="Redundant recipe destination: the files of VIRTUAL_PLC_01_ExportProcess"/>
+    <moqui.device.DeviceRequest requestName="VIRTUAL_PLC_02_TransferContent" parentRequestName="VIRTUAL_PLC_01_TransferContent"
+            deviceId="VIRTUAL_PLC_02" requestTypeEnumId="DrtContentTransfer" purposeEnumId="DrpCommissioning"
+            routerEnumId="DrrDirect" runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
+            brokerUri="file:target/transferred-content/plc-redundant" timeout="30000" fromDate="2026-06-28 00:00:00"
+            description="Redundant content destination: the content of VIRTUAL_PLC_01_TransferContent"/>
+
+    <!-- ========================================================= -->
+    <!-- Trajectory recipe (the trajectory export seed of the former gateway tests) -->
+    <!-- ========================================================= -->
+    <moqui.math.ApproximatedFunction approximatedFunctionId="TestPlcTrajectory01" interpolationEnumId="AfiPiecewise"
+            purposeEnumId="AfpTrajectory" vectorSpaceEnumId="EuclideanSpace3D" codomainTypeEnumId="AfctVector"
+            parametrizationDegree="1" dataStorageEnumId="AfdsPointTable" name="Test PLC Trajectory"/>
+    <moqui.math.ParametricPath approximatedFunctionId="TestPlcTrajectory01" profileEnumId="PppfTrajectoryProfile"/>
+    <moqui.math.Trajectory approximatedFunctionId="TestPlcTrajectory01"/>
+    <moqui.math.Vector vectorId="TestPlcTrajPt1Vec"/>
+    <moqui.math.Vector vectorId="TestPlcTrajPt2Vec"/>
+    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt1V0" vectorId="TestPlcTrajPt1Vec" dimensionIndex="0" realValue="100.0"/>
+    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt1V1" vectorId="TestPlcTrajPt1Vec" dimensionIndex="1" realValue="200.0"/>
+    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt1V2" vectorId="TestPlcTrajPt1Vec" dimensionIndex="2" realValue="300.0"/>
+    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt2V0" vectorId="TestPlcTrajPt2Vec" dimensionIndex="0" realValue="150.0"/>
+    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt2V1" vectorId="TestPlcTrajPt2Vec" dimensionIndex="1" realValue="250.0"/>
+    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt2V2" vectorId="TestPlcTrajPt2Vec" dimensionIndex="2" realValue="350.0"/>
+    <moqui.math.ApproximatedFunctionSample approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt1"
+            sampleTypeEnumId="AfstWaypoint" sampleCode="WP0001" sampleName="Waypoint 1" sequenceNum="1" sampleVectorId="TestPlcTrajPt1Vec"/>
+    <moqui.math.ApproximatedFunctionSample approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt2"
+            sampleTypeEnumId="AfstWaypoint" sampleCode="WP0002" sampleName="Waypoint 2" sequenceNum="2" sampleVectorId="TestPlcTrajPt2Vec"/>
+    <moqui.math.ParametricPathPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt1" tolerance="10.0"/>
+    <moqui.math.ParametricPathPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt2"/>
+    <moqui.math.TrajectoryPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt1"
+            isBreakPoint="N" pointTimeOffsetMillis="500.0"/>
+    <moqui.math.TrajectoryPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt2"
+            isBreakPoint="Y" pointTimeOffsetMillis="1000.0"/>
+    <moqui.device.DeviceConfig deviceConfigId="TestPlcTrajectoryConfig1" configName="Test PLC Trajectory Config"
+            deviceTypeEnumId="DtPLC" approximatedFunctionId="TestPlcTrajectory01"/>
+    <moqui.device.DeviceRuleSet deviceRuleSetId="TestPlcTrajectoryRuleSet1" ruleSetName="TestPlcTrajectoryRuleSet"
+            purposeEnumId="DrspProcess" deviceId="VIRTUAL_PLC_01"/>
+    <moqui.device.DeviceRule deviceRuleId="TestPlcTrajectoryRule010" deviceRuleSetId="TestPlcTrajectoryRuleSet1"
+            deviceConfigId="TestPlcTrajectoryConfig1" deviceId="VIRTUAL_PLC_01" ruleTypeEnumId="DrtApplyConfig"
+            ruleName="Apply Test PLC trajectory config" priority="1"/>
 </entity-facade-xml>

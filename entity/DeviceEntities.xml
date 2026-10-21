@@ -408,7 +408,8 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="driverEnumId" type="id" not-null="true"/>
         <field name="transportEnumId" type="id"/>
         <field name="transportConfig" type="text-medium"/>
-        <field name="options" type="text-short"/>
+        <field name="options" type="text-medium"><description>Query-string or JSON options of the driver, for example the
+            usernameEnv, passwordEnv and host-key-fingerprint of an SFTP connection.</description></field>
 
         <relationship type="one" related="moqui.device.PhysicalDevice" short-alias="device"/>
         <relationship type="one" title="DeviceConnectionType" related="moqui.basic.Enumeration" short-alias="type">
@@ -447,6 +448,7 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="Logix CIP/EIP" enumId="DcdLogixCIPEIP" enumCode="logix" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Opc Ua" enumId="DcdOpcUa" enumCode="opcua" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="MQTT" enumId="DcdMqtt" enumCode="mqtt" enumTypeId="DeviceConnectionDriver"/>
+            <moqui.basic.Enumeration description="SFTP" enumId="DcdSftp" enumCode="sftp" enumTypeId="DeviceConnectionDriver"/>
             <!-- NOTE: for MTConnect protocol see https://docs.mtconnect.org -->
             <moqui.basic.Enumeration description="MTConnect" enumId="DcdMtConnect" enumCode="mtConnect" enumTypeId="DeviceConnectionDriver"/>
             <!-- Device Connection Transport -->

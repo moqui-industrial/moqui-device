@@ -19,7 +19,7 @@ mod onnx_tool;
 mod services;
 
 use moqui_core::context::Error;
-use moqui_core::native::{NativeComponent, NativeRegistry, submit_component};
+use moqui_core::native::{submit_component, NativeComponent, NativeRegistry};
 
 submit_component! { NativeComponent { name: "moqui-device", register } }
 

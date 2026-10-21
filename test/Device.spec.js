@@ -109,6 +109,28 @@ feature("a rule set renders as one recipe file per priority", {
     },
 });
 
+feature("a rule set with a trajectory renders the trajectory points of the former gateway export", {
+    when() {
+        return call("moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles", {deviceRuleSetId: "TestPlcTrajectoryRuleSet1"});
+    },
+    then(out) {
+        out.files.length == 1;
+        out.files[0].name == "TestPlcTrajectoryRuleSet_p01.txt";
+        out.files[0].content.includes("Trajectory.trajectoryId:=TestPlcTrajectory01");
+        out.files[0].content.includes("Trajectory.pointCount:=2");
+        out.files[0].content.includes("Trajectory.points[0].isBreakPoint:=FALSE");
+        out.files[0].content.includes("Trajectory.points[1].isBreakPoint:=TRUE");
+        out.files[0].content.includes("Trajectory.points[0].sequenceNum:=1");
+        out.files[0].content.includes("Trajectory.points[0].pos.v[0]:=100");
+        out.files[0].content.includes("Trajectory.points[1].pos.v[2]:=350");
+        out.files[0].content.includes("Trajectory.points[0].timeOffsetMs:=500");
+        out.files[0].content.includes("Trajectory.points[0].bufferMode:=3");
+        out.files[0].content.includes("Trajectory.points[0].transitionMode:=0");
+        out.files[0].content.includes("Trajectory.points[0].blendingMode:=10");
+        out.files[0].content.includes("Trajectory.points[1].blendingMode:=0");
+    },
+});
+
 feature("trajectory axes follow the vector space of the planned trajectory", {
     when() {
         const planned = call("moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner", {
