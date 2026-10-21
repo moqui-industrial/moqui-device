@@ -421,8 +421,8 @@ Rust service. `plannerMode=remote` explicitly delegates to `inferenceUrl`;
 These examples do not establish general collision avoidance, kinematic feasibility
 or physical execution by a PLC.
 
-The training script and the Gradle/DJL dependencies in this repository describe
-the Java ONNX example. MR-Moqui does not load those JVM libraries. A trained
+`script/train_robot_arm_trajectory_planner.py` trains and exports the ONNX model;
+the same file runs in Java/DJL on the `main` branch and in Rust/ort here. A trained
 model must match the selected TCP tensor contract. Native and remote inference
 never silently substitute interpolation.
 
@@ -742,9 +742,8 @@ becoming a second configuration source.
 
 ## Install
 
-For this branch, follow the MR-Moqui setup below. For the Java component only:
-
-    ./gradlew getComponent -Pcomponent=moqui-device
+Follow the MR-Moqui setup below. The Java component, with its Gradle build, is on
+the `main` branch.
 
 ## MR-Moqui branch
 
@@ -758,8 +757,8 @@ From the framework root:
 ./moq load --debug seed
 ```
 
-The Gradle/JVM/DJL examples above apply to the Java implementation. MR-Moqui
-runs the component's JavaScript/XML services. Field communication (MQTT, OPC UA,
+MR-Moqui runs the component's JavaScript/XML services and its Rust crate; there is
+no Gradle build or JVM library on this branch. Field communication (MQTT, OPC UA,
 Modbus TCP, file and SFTP) is the
 [moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
 component, installed in the same runtime: `run#DeviceRequest` calls its protocol
