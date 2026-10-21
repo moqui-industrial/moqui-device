@@ -58,14 +58,15 @@ along with this software (see the LICENSE.md file). If not, see
          You can customize it according to your needs.
          This entity could replace the ParameterLog entity for performance and flexibility.
          The view-entity allows you to query the device log data without needing to parse the JSONB fields in your queries.
-         You can use the aliases to access the fields in the payload JSON.
+         You can use the aliases to access the fields in the payload JSON. The expressions use the PostgreSQL JSON
+         operator ->> and go in complex-alias: the function attribute of an alias takes only a function name such as sum.
     <view-entity entity-name="DeviceLogView" package="moqui.device">
         <member-entity entity-alias="DL" entity-name="moqui.device.DeviceLog"/>
 
         <alias-all entity-alias="DL"/>
-        <alias name="temperature" entity-alias="DL" function="CAST(payload->>'temperature' AS NUMERIC)"/>
-        <alias name="rpm" entity-alias="DL" function="CAST(payload->>'rpm' AS INTEGER)"/>
-        <alias name="status" entity-alias="DL" function="payload->>'status'"/>
+        <alias name="temperature" type="number-decimal"><complex-alias expression="CAST(DL.payload->>'temperature' AS NUMERIC)"/></alias>
+        <alias name="rpm" type="number-integer"><complex-alias expression="CAST(DL.payload->>'rpm' AS INTEGER)"/></alias>
+        <alias name="status" type="text-short"><complex-alias expression="DL.payload->>'status'"/></alias>
     </view-entity>
     -->
 </entities>
