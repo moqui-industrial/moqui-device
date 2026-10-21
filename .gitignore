@@ -2,9 +2,7 @@
 build
 lib/test-*.jar
 
-# ML model binaries: trajectory_planner.onnx (script/train_robot_arm_trajectory_planner.py) is committed
-data/ml/*.onnx
-!data/ml/trajectory_planner.onnx
+# ML models: the exported ONNX files are committed; PyTorch checkpoints are not
 data/ml/*.pt
 
 # IntelliJ IDEA files

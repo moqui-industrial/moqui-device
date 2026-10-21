@@ -1,3 +1,17 @@
+/*
+ * This software is in the public domain under CC0 1.0 Universal plus a
+ * Grant of Patent License.
+ *
+ * To the extent possible under law, the author(s) have dedicated all
+ * copyright and related and neighboring rights to this software to the
+ * public domain worldwide. This software is distributed without any
+ * warranty.
+ *
+ * You should have received a copy of the CC0 Public Domain Dedication
+ * along with this software (see the LICENSE.md file). If not, see
+ * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ */
+
 use moqui_core::context::ExecutionContext;
 use moqui_core::native::{Parameters, ServiceInfo};
 use moqui_lib::error::Error;
@@ -15,8 +29,7 @@ pub fn infer_trajectory_waypoints(
         ))
     }
     #[cfg(feature = "onnx")]
-    infer(ec, parameters)
-        .map_err(|error| Error::new(format!("Native ONNX inference failed: {error:#}")))
+    infer(ec, parameters).map_err(|error| Error::new(format!("Native ONNX inference failed: {error:#}")))
 }
 
 #[cfg(feature = "onnx")]
@@ -51,14 +64,11 @@ fn infer(ec: &ExecutionContext, parameters: &Parameters) -> anyhow::Result<Param
         .context("ONNX contentLocation is missing")?;
     // Only the model's registered artifact is loaded; callers cannot supply a path.
     let resource = ec.factory().resource().get(location)?;
-    let path = resource.file_path().context(
-        "Native ONNX requires a local/component file; materialize remote/DB model content first",
-    )?;
+    let path = resource
+        .file_path()
+        .context("Native ONNX requires a local/component file; materialize remote/DB model content first")?;
     ensure!(path.is_file(), "ONNX model file does not exist: {location}");
-    let profile = parameters
-        .get("onnxProfile")
-        .and_then(Value::as_str)
-        .unwrap_or("tcp12");
+    let profile = parameters.get("onnxProfile").and_then(Value::as_str).unwrap_or("tcp12");
     let runtime_library = std::env::var_os("ORT_DYLIB_PATH")
         .context("Set ORT_DYLIB_PATH to the installed ONNX Runtime shared library")?;
     ensure!(
@@ -88,13 +98,7 @@ fn infer(ec: &ExecutionContext, parameters: &Parameters) -> anyhow::Result<Param
             response
                 .waypoints
                 .into_iter()
-                .map(|pose| {
-                    Value::List(
-                        pose.into_iter()
-                            .map(|value| Value::F64(f64::from(value)))
-                            .collect(),
-                    )
-                })
+                .map(|pose| Value::List(pose.into_iter().map(|value| Value::F64(f64::from(value))).collect()))
                 .collect(),
         ),
     );

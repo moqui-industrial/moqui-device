@@ -1,3 +1,17 @@
+/*
+ * This software is in the public domain under CC0 1.0 Universal plus a
+ * Grant of Patent License.
+ *
+ * To the extent possible under law, the author(s) have dedicated all
+ * copyright and related and neighboring rights to this software to the
+ * public domain worldwide. This software is distributed without any
+ * warranty.
+ *
+ * You should have received a copy of the CC0 Public Domain Dedication
+ * along with this software (see the LICENSE.md file). If not, see
+ * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ */
+
 use anyhow::{Context, Result, ensure};
 use ort::{session::Session, value::Tensor};
 use serde::{Deserialize, Serialize};
@@ -36,9 +50,7 @@ pub struct Planner {
 
 impl Planner {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        let session = Session::builder()?
-            .with_intra_threads(1)?
-            .commit_from_file(path)?;
+        let session = Session::builder()?.with_intra_threads(1)?.commit_from_file(path)?;
         ensure!(
             session.inputs.len() == 1 && !session.outputs.is_empty(),
             "expected one model input and at least one output"
@@ -53,10 +65,7 @@ impl Planner {
     /// Java/DJL contract: one float input [1,12], first output flattened into TCP poses.
     pub fn load_tcp12(path: impl AsRef<Path>, model_id: String) -> Result<Self> {
         let mut planner = Self::load(path)?;
-        ensure!(
-            planner.session.inputs.len() == 1,
-            "tcp12 expects one model input"
-        );
+        ensure!(planner.session.inputs.len() == 1, "tcp12 expects one model input");
         ensure!(!model_id.is_empty(), "model ID must not be empty");
         planner.model_id = model_id;
         planner.tcp12 = true;
@@ -79,14 +88,10 @@ impl Planner {
         );
         let mut clearance = 0.0;
         if let Some(obstacle) = &request.obstacle {
-            ensure!(
-                !self.tcp12,
-                "the 12-input model does not support obstacle observations"
-            );
+            ensure!(!self.tcp12, "the 12-input model does not support obstacle observations");
             // Explicit domain of the demonstration: a calibrated, fixed X corridor.
             ensure!(
-                request.start_pose == [0.0; 6]
-                    && request.goal_pose == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                request.start_pose == [0.0; 6] && request.goal_pose == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 "obstacle demo requires the unit X corridor"
             );
             ensure!(
@@ -107,12 +112,7 @@ impl Planner {
             clearance = obstacle.radius + obstacle.margin;
             ensure!(clearance <= 0.25, "obstacle exceeds demonstration corridor");
         }
-        let mut features: Vec<f32> = request
-            .start_pose
-            .iter()
-            .chain(&request.goal_pose)
-            .copied()
-            .collect();
+        let mut features: Vec<f32> = request.start_pose.iter().chain(&request.goal_pose).copied().collect();
         if !self.tcp12 {
             features.push(clearance);
         }
@@ -127,9 +127,9 @@ impl Planner {
         } else {
             "waypoints".into()
         };
-        let outputs = self.session.run(
-            ort::inputs![input_name => Tensor::from_array(([1usize, input_width], features))?],
-        )?;
+        let outputs = self
+            .session
+            .run(ort::inputs![input_name => Tensor::from_array(([1usize, input_width], features))?])?;
         let (shape, values) = outputs
             .get(&output_name)
             .context("model has no waypoints output")?
@@ -156,10 +156,7 @@ impl Planner {
             (&waypoints[10], &request.goal_pose),
         ] {
             ensure!(
-                actual
-                    .iter()
-                    .zip(expected)
-                    .all(|(a, b)| (a - b).abs() < 1e-5),
+                actual.iter().zip(expected).all(|(a, b)| (a - b).abs() < 1e-5),
                 "model changed an endpoint"
             );
         }

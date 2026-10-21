@@ -20,7 +20,7 @@ From this directory, with Rust/Cargo and Python 3.10–3.13:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python train.py
+.venv/bin/python train.py   # optional: model.onnx and tcp12.onnx are committed; this regenerates them
 # The wheel supplies the shared library; ort dynamically loads it.
 export ORT_DYLIB_PATH="$(.venv/bin/python -c 'import pathlib, onnxruntime; print(next((pathlib.Path(onnxruntime.__file__).parent / "capi").glob("libonnxruntime.so.*")))')"
 cargo test --locked

@@ -1,3 +1,17 @@
+/*
+ * This software is in the public domain under CC0 1.0 Universal plus a
+ * Grant of Patent License.
+ *
+ * To the extent possible under law, the author(s) have dedicated all
+ * copyright and related and neighboring rights to this software to the
+ * public domain worldwide. This software is distributed without any
+ * warranty.
+ *
+ * You should have received a copy of the CC0 Public Domain Dedication
+ * along with this software (see the LICENSE.md file). If not, see
+ * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ */
+
 //! Factory-owned ONNX sessions. One mutable session per artifact, shared by services/tools.
 use moqui_core::context::Error;
 use moqui_core::native::{Tool, ToolFactory};
@@ -57,14 +71,8 @@ impl Sessions {
                 .entries
                 .lock()
                 .map_err(|_| anyhow::anyhow!("ONNX registry lock poisoned"))?;
-            ensure!(
-                !self.closed.load(Ordering::Acquire),
-                "ONNX factory is shutting down"
-            );
-            if !entries
-                .get(&key)
-                .is_some_and(|entry| entry.fingerprint == fingerprint)
-            {
+            ensure!(!self.closed.load(Ordering::Acquire), "ONNX factory is shutting down");
+            if !entries.get(&key).is_some_and(|entry| entry.fingerprint == fingerprint) {
                 let planner = match profile {
                     "tcp12" => Planner::load_tcp12(path, request.math_model_id.clone())?,
                     "corridor13" => Planner::load(path)?,
@@ -93,9 +101,7 @@ impl Sessions {
                 );
                 self.loads.fetch_add(1, Ordering::Relaxed);
             }
-            let entry = entries
-                .get_mut(&key)
-                .context("ONNX session not registered")?;
+            let entry = entries.get_mut(&key).context("ONNX session not registered")?;
             entry.used = self.clock.fetch_add(1, Ordering::Relaxed);
             entry.planner.clone()
         };
@@ -118,10 +124,7 @@ impl Sessions {
     fn count(&self) -> usize {
         #[cfg(feature = "onnx")]
         {
-            self.entries
-                .lock()
-                .map(|entries| entries.len())
-                .unwrap_or(0)
+            self.entries.lock().map(|entries| entries.len()).unwrap_or(0)
         }
         #[cfg(not(feature = "onnx"))]
         {
@@ -150,9 +153,7 @@ impl ToolFactory for OnnxToolFactory {
         self.sessions.clear(None);
     }
     fn type_declaration(&self) -> Option<&'static str> {
-        Some(
-            "{ invalidate(mathModelId: string): void; clear(): void; sessionCount(): number; loadCount(): number }",
-        )
+        Some("{ invalidate(mathModelId: string): void; clear(): void; sessionCount(): number; loadCount(): number }")
     }
 }
 
@@ -161,12 +162,7 @@ impl Tool for OnnxManager {
     fn methods(&self) -> &'static [&'static str] {
         &["invalidate", "clear", "sessionCount", "loadCount"]
     }
-    fn call(
-        &self,
-        _ec: &moqui_core::context::ExecutionContext,
-        method: &str,
-        args: &[Value],
-    ) -> Result<Value, Error> {
+    fn call(&self, _ec: &moqui_core::context::ExecutionContext, method: &str, args: &[Value]) -> Result<Value, Error> {
         match method {
             "invalidate" => {
                 let id = args

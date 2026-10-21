@@ -1,6 +1,4 @@
 /target/
 /.venv/
-/model.onnx
-/tcp12.onnx
 /report.json
 __pycache__/
