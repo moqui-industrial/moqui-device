@@ -404,7 +404,9 @@ along with this software (see the LICENSE.md file). If not, see
         </out-parameters>
     </service>
 
-    <!-- ========== DeviceContent Services ========== -->
+    <!-- ============================================= -->
+    <!-- ========== Device Content Services ========== -->
+    <!-- ============================================= -->
 
     <service verb="get" noun="DeviceContentLocation">
         <in-parameters>
@@ -420,7 +422,7 @@ along with this software (see the LICENSE.md file). If not, see
                 <entity-find entity-name="moqui.device.DeviceContent" list="deviceContentList">
                     <econdition field-name="deviceId"/><econdition field-name="contentTypeEnumId"/>
                     <order-by field-name="-contentDate"/></entity-find>
-                <if condition="deviceContentList?.length">
+                <if condition="(deviceContentList?.length > 0)">
                     <set field="deviceContent" from="deviceContentList[0]"/>
                     <break/>
                 </if>
@@ -477,10 +479,10 @@ along with this software (see the LICENSE.md file). If not, see
             <set field="contentLocation" value="${contentRoot}/device/${deviceId}/content_${deviceContentId}/${filename}"/>
 
             <set field="docRr" from="ec.resource.getLocationReference(contentLocation)"/>
-            <script><![CDATA[
-                fileStream = contentFile.getInputStream();
-                try { docRr.putStream(fileStream); } finally { fileStream.close(); }
-            ]]></script>
+            <script>
+                const fileStream = contentFile.getInputStream()
+                try { docRr.putStream(fileStream) } finally { fileStream.close() }
+            </script>
 
             <if condition="saveContentLocation"><service-call name="update#moqui.device.DeviceContent"
                     in-map="{deviceContentId:deviceContentId, contentLocation:contentLocation}"/></if>
