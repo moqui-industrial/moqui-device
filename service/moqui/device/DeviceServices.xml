@@ -252,9 +252,8 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <!-- ========== Device Config Export and Device Content Transfer ========== -->
-    <!-- The Camel gateway's export and transfer routes (DeviceGatewayServices.xml of the Groovy version), as local
-         services: export#DeviceConfig renders the recipe and sends it with transfer#DeviceContent, which hands the files
-         to the implementation of the DeviceRequest (a file or SFTP endpoint). -->
+    <!-- export#DeviceConfig renders the recipe of a DeviceRuleSet and sends it with transfer#DeviceContent, which hands
+         the files to the implementation of the DeviceRequest (for example a file or SFTP endpoint). -->
 
     <service verb="get" noun="DeviceConfigExportFiles">
         <description>
@@ -273,9 +272,6 @@ along with this software (see the LICENSE.md file). If not, see
             Trajectory.points[i].pos.v[d] (VectorComponent.realValue), .sequenceNum, .timeOffsetMs, .isBreakPoint,
             .hasBlendingOverride, .bufferMode and .transitionMode (from blendingEnumId), .blendingMode
             (ParametricPathPoint.tolerance).
-
-            This is the query of the run-device-config-export route of the former Camel gateway, on the Entity
-            Engine.
         </description>
         <in-parameters>
             <parameter name="deviceRuleSetId" required="true"/>
@@ -361,7 +357,7 @@ along with this software (see the LICENSE.md file). If not, see
         <description>
             Transfers files (G-Code, CNC program, firmware, recipe, etc.) to a device: the DeviceContent of
             deviceContentId, read from DeviceContent.contentLocation through the resource facade, and the transferFiles.
-            The files go to the implementation of the DeviceRequest of requestName (runServiceName, for example the
+            The files go to the implementation of the DeviceRequest of requestName (its runServiceName, for example a
             file or SFTP endpoint of moqui-device-gateway), as transferFiles: Maps with name and content (text) or bytes.
             The request is a DrtContentTransfer, or a DrtConfigWrite for the recipe files of export#DeviceConfig.
         </description>
@@ -505,14 +501,11 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
     </service>
 
-    <!-- ================================================================================================= -->
-    <!-- Not in the Groovy version: services of the Rust moqui-device-gateway (gateway scope, startup        -->
-    <!-- subscriptions, inbound samples and their notices, trajectory export). They are reviewed with the   -->
-    <!-- services of DeviceGatewayServices.xml of the Groovy version in the next step.                       -->
-    <!-- ================================================================================================= -->
+    <!-- ========== Gateway Scope and Subscriptions ========== -->
+
     <service verb="get" noun="DeviceGatewayScope" authenticate="false">
         <description>
-            The identity and scope of a gateway, as the former gateway checked them. The gateway must be a Device with a
+            The identity and scope of a gateway. The gateway must be a Device with a
             PhysicalDevice and a DgmpEdgeGateway member of at least one DeviceGroup (statusId empty or DgmsAlive). Its
             scope is those groups and their alive members, recursively; the controllers of the scope are the members
             with a controller purpose (DgmpProcessPLC, DgmpSafetyPLC, DgmpController, DgmpMotionController,
@@ -584,7 +577,7 @@ along with this software (see the LICENSE.md file). If not, see
         <description>
             The subscriptions a gateway starts: the active (fromDate, thruDate) DeviceRequest records of type
             DrtSubscribe, DrtEvent, DrtStateChange or DrtCyclic, run by a configured device implementation service, whose device is a
-            controller in the scope of the gateway (get#GatewayScope); ordered by priority, sequenceNum, requestName.
+            controller in the scope of the gateway (get#DeviceGatewayScope); ordered by priority, sequenceNum, requestName.
         </description>
         <in-parameters>
             <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
@@ -609,7 +602,7 @@ along with this software (see the LICENSE.md file). If not, see
                 <econdition field-name="runServiceName" operator="is-not-null"/>
                 <date-filter/>
             </entity-find>
-            <!-- no priority or sequenceNum sorts last, as COALESCE(..., 999999) did -->
+            <!-- a request without priority or sequenceNum sorts last -->
             <set field="requestNames" from="Array.from(requestList).sort((a, b) => {
                     const key = value => value == null ? 999999 : (typeof value.toNumber === 'function' ? value.toNumber() : Number(value));
                     return (key(a.priority) - key(b.priority)) || (key(a.sequenceNum) - key(b.sequenceNum))
@@ -617,6 +610,8 @@ along with this software (see the LICENSE.md file). If not, see
                 }).map(r => r.requestName)"/>
         </actions>
     </service>
+
+    <!-- ========== Inbound Samples ========== -->
 
     <service verb="notify" noun="DeviceInboundState" authenticate="false">
         <description>
@@ -710,6 +705,9 @@ along with this software (see the LICENSE.md file). If not, see
         </in-parameters>
         <actions/>
     </service>
+
+    <!-- ========== Trajectory Export ========== -->
+
     <service verb="get" noun="TrajectoryAxes">
         <description>
             Reads the waypoints of a planned trajectory (ApproximatedFunctionSample in sequenceNum order, each with its
@@ -769,8 +767,8 @@ along with this software (see the LICENSE.md file). If not, see
 
     <service verb="export" noun="Trajectory" authenticate="false" transaction="ignore">
         <description>
-            Publishes a planned trajectory for immediate execution (the ephemeral path; a recipe export through
-            moqui.device.DeviceConfigServices.export#DeviceConfig is the persistent one). The axis values come from
+            Publishes a planned trajectory for immediate execution (the ephemeral path; a recipe exported with
+            export#DeviceConfig is the persistent one). The axis values come from
             get#TrajectoryAxes and go out as one JSON message through run#DeviceRequest: the DeviceRequest is an MQTT
             write without items (requestTypeEnumId DrtWrite, runServiceName
             moqui.device.gateway.MqttServices.run#DeviceRequest, brokerUri the broker, query the topic that

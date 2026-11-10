@@ -446,7 +446,7 @@ is the optional `onnx` feature of the crate (see
 examples do not establish collision avoidance, kinematic feasibility or physical
 execution by a PLC.
 
-`script/train_robot_arm_trajectory_planner.py` trains and exports the ONNX model
+`scripts/train_robot_arm_trajectory_planner.py` trains and exports the ONNX model
 `data/ml/trajectory_planner.onnx`; the same file runs with DJL on the `main`
 branch and with ONNX Runtime here.
 

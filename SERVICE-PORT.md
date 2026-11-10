@@ -81,9 +81,9 @@ The crate `examples/onnx-obstacle` is a separate experiment and is unchanged.
 The other services of `DeviceGatewayServices.xml` (`run#GatewayDeviceRequest`,
 `export#Trajectory`, `receive#GatewayNotification`) and the services the Rust
 gateway added (gateway scope, startup subscriptions, sample persistence and its
-notices) are reviewed in the next step. Until then they stay in a separate,
-marked section of `DeviceServices.xml`; `DeviceConfigServices.xml` keeps its
-compatibility names.
+notices) are reviewed in the next step. Until then they stay in their sections
+of `DeviceServices.xml`. `DeviceConfigServices.xml`, which only repeated
+`get#DeviceConfigExportFiles` and `export#DeviceConfig` under other names, is removed.
 
 ## Preserved Contracts And Corrections
 
