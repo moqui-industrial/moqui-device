@@ -255,7 +255,7 @@ fn gateway_scope() -> Result<Result<Option<HashSet<String>>, String>, Error> {
         return Ok(Ok(None));
     }
     let scope = moqui_core::service::sync(
-        "moqui.device.DeviceServices.get#DeviceGatewayScope",
+        "moqui.device.FieldbusServices.get#GatewayScope",
         &Parameters::from([("gatewayDeviceId".into(), Value::string(gateway))]),
     )?;
     if !matches!(scope.get("ready"), Some(Value::Bool(true))) {
@@ -801,7 +801,7 @@ pub fn store_samples(
         }
         Err(error) => return Err(error),
     };
-    let plc_log = info.name.ends_with("store#DeviceLogSamples");
+    let plc_log = info.name.ends_with("store#LogSamples");
     let scope = match gateway_scope() {
         Ok(scope) => scope,
         Err(error) if !database_available(&ef, name) => {
@@ -981,7 +981,7 @@ fn finish(
         ]);
         let mark = ec.message().error_mark();
         let _ = transactions.run(TransactionAttribute::ForceNew, None, || {
-            moqui_core::service::sync("moqui.device.DeviceServices.notify#DeviceAcquisitionError", &report)
+            moqui_core::service::sync("moqui.device.FieldbusServices.notify#AcquisitionError", &report)
                 .map_err(|e| Error::new(e.to_string()))
         });
         ec.message().take_errors_since(mark);
@@ -993,7 +993,7 @@ fn finish(
         let mark = ec.message().error_mark();
         // The framework logs hook failures. They must not invalidate already committed measurements.
         let _ = transactions.run(TransactionAttribute::ForceNew, None, || {
-            moqui_core::service::sync("moqui.device.DeviceServices.after#DeviceSamples", &callback)
+            moqui_core::service::sync("moqui.device.FieldbusServices.after#Samples", &callback)
                 .map_err(|e| Error::new(e.to_string()))
         });
         ec.message().take_errors_since(mark);

@@ -771,7 +771,7 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.security.user.NotificationTopic topic="DeviceGatewayRequestFailed" inboxEnumId="NinNotifications" description="Device request failed"
             typeString="danger" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
             titleTemplate="${title}"/>
-    <!-- DeviceServices.notify#DeviceInboundState and notify#DeviceAcquisitionError: values of a subscription or polling
+    <!-- FieldbusServices.notify#InboundState and notify#AcquisitionError: values of a subscription or polling
         request that are not stored, and their recovery -->
     <moqui.security.user.NotificationTopic topic="DeviceGatewayInboundFailed" inboxEnumId="NinNotifications" description="Device data not stored"
             typeString="danger" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
@@ -779,4 +779,10 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.security.user.NotificationTopic topic="DeviceGatewayInboundRecovered" inboxEnumId="NinNotifications" description="Device data stored again"
             typeString="success" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
             titleTemplate="${title}"/>
+    <!-- Starts the fieldbus subscriptions of this gateway after a start and restarts those that lost their connection;
+         see moqui.device.FieldbusServices.start#Subscriptions. localOnly: each instance runs its own. -->
+    <moqui.service.job.ServiceJob jobName="start_DeviceGatewaySubscriptions"
+            description="Start the device gateway subscriptions (after a start, and those that lost their connection)"
+            serviceName="moqui.device.FieldbusServices.start#Subscriptions"
+            cronExpression="0 * * * * ?" localOnly="Y" paused="N"/>
 </entity-facade-xml>

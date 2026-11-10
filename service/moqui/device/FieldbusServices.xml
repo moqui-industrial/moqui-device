@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+
+    <!-- ========== Fieldbus Requests ========== -->
+    <!-- The drivers are those of moqui-device-gateway (MQTT, OPC UA, Modbus TCP), through its DeviceGateway tool, as
+         moqui-plc4j's run#Plc4jRequest used PLC4J through Plc4jToolFactory. -->
+
+    <service verb="run" noun="FieldbusRequest" type="rust" location="moqui_device::fieldbus::run_fieldbus_request"
+            authenticate="false" transaction="ignore">
+        <description>
+            Runs a DeviceRequest on the driver of its connection: DeviceConnection.driverEnumId (DcdMqtt, DcdOpcUa,
+            DcdModbusTCP), else the scheme of DeviceRequest.brokerUri or DeviceConnection.transportConfig (mqtt://,
+            mqtts://, paho-mqtt5:?brokerUrl=..., opc.tcp://, modbus-tcp://). moqui.device.DeviceServices.run#DeviceRequest
+            calls it for a request without runServiceName; it can also be set as runServiceName.
+
+            DrtRead reads the items and stores the values (store#Samples). DrtWrite writes the values of the item
+            Parameters; an MQTT write without items publishes the payload parameter as JSON on DeviceRequest.query.
+            DrtSubscribe, DrtEvent and DrtStateChange subscribe, DrtCyclic polls at pollingInterval (an MQTT DrtCyclic
+            subscribes); what arrives is stored through the sample queue. DrtUnsubscribe stops the subscription of
+            parentRequestName.
+
+            The item address is DeviceRequestItem.query, else DeviceRequest.query: an MQTT topic, an OPC UA node id, a
+            Modbus register. With the property device_gateway_device_id set, a device outside the scope of that gateway
+            is refused (get#GatewayScope).
+        </description>
+        <implements service="moqui.device.DeviceServices.run#DeviceRequestInternal"/>
+        <in-parameters>
+            <parameter name="payload" type="Map"><description>The message of an MQTT write without items.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="status"><description>completed, partial, active, failed, uncertain or unchanged.</description></parameter>
+            <parameter name="samples" type="List"><description>The values read.</description></parameter>
+            <parameter name="storedCount" type="Long"/>
+            <parameter name="itemResults" type="List"><description>Maps: parameterId, status, value, error.</description></parameter>
+            <parameter name="subscriptionId"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
+    </service>
+
+    <service verb="run" noun="PlcLogRequest" type="rust" location="moqui_device::fieldbus::run_plc_log_request"
+            authenticate="false" transaction="ignore">
+        <description>
+            PLC log events over MQTT: a DrtSubscribe or DrtEvent request whose topic (DeviceRequest.query) carries the log
+            events of the moqui-plc LoggerFacade. An event with a source is stored as a ParameterLog of that Parameter, an
+            event without one as a DeviceLog (store#LogSamples). The loggerName of each event must be the deviceId
+            of the request. DrtUnsubscribe stops it. Set as DeviceRequest.runServiceName.
+        </description>
+        <implements service="moqui.device.DeviceServices.run#DeviceRequestInternal"/>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="subscriptionId"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
+    </service>
+
+    <!-- ========== Gateway Scope and Subscriptions ========== -->
+
+    <service verb="get" noun="GatewayScope" authenticate="false">
+        <description>
+            The identity and scope of a gateway. The gateway must be a Device with a
+            PhysicalDevice and a DgmpEdgeGateway member of at least one DeviceGroup (statusId empty or DgmsAlive). Its
+            scope is those groups and their alive members, recursively; the controllers of the scope are the members
+            with a controller purpose (DgmpProcessPLC, DgmpSafetyPLC, DgmpController, DgmpMotionController,
+            DgmpRemoteIO, DgmpSafetyRemoteIO, DgmpExtremeConditionRemoteIO).
+        </description>
+        <in-parameters>
+            <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="gatewayDeviceId"/>
+            <parameter name="ready" type="Boolean"/>
+            <parameter name="message"/>
+            <parameter name="scopedDeviceIds" type="List"/>
+            <parameter name="controllerDeviceIds" type="List"/>
+        </out-parameters>
+        <actions>
+            <set field="gatewayDeviceId" from="gatewayDeviceId || System.getProperty('device_gateway_device_id') || null"/>
+            <set field="ready" from="false"/>
+            <set field="scopedDeviceIds" from="[]"/>
+            <set field="controllerDeviceIds" from="[]"/>
+            <if condition="!gatewayDeviceId">
+                <set field="message" value="No gateway identity: set the property device_gateway_device_id."/>
+                <return/>
+            </if>
+            <entity-find-one entity-name="moqui.device.Device" value-field="device">
+                <field-map field-name="deviceId" from="gatewayDeviceId"/>
+            </entity-find-one>
+            <entity-find-one entity-name="moqui.device.PhysicalDevice" value-field="physicalDevice">
+                <field-map field-name="deviceId" from="gatewayDeviceId"/>
+            </entity-find-one>
+            <if condition="!device || !physicalDevice">
+                <set field="message" value="Configured gateway ${gatewayDeviceId} does not exist as Device + PhysicalDevice."/>
+                <return/>
+            </if>
+            <entity-find entity-name="moqui.device.DeviceGroupMember" list="gatewayMemberships">
+                <econdition field-name="memberDeviceId" from="gatewayDeviceId"/>
+                <econdition field-name="purposeEnumId" value="DgmpEdgeGateway"/>
+            </entity-find>
+            <set field="pendingGroupIds" from="gatewayMemberships.filter((member => member.statusId == null || member.statusId === 'DgmsAlive')).map(member => member.deviceId)"/>
+            <if condition="!pendingGroupIds.length">
+                <set field="message" value="Gateway ${gatewayDeviceId} is not assigned to any DeviceGroup as DgmpEdgeGateway."/>
+                <return/>
+            </if>
+            <set field="controllerPurposes" from="['DgmpProcessPLC', 'DgmpSafetyPLC', 'DgmpController', 'DgmpMotionController',
+                'DgmpRemoteIO', 'DgmpSafetyRemoteIO', 'DgmpExtremeConditionRemoteIO']"/>
+            <set field="scopedDeviceIds" from="[...pendingGroupIds]"/>
+            <!-- the groups of the gateway and their alive members, recursively -->
+            <while condition="pendingGroupIds.length">
+                <set field="groupId" from="pendingGroupIds.shift()"/>
+                <entity-find entity-name="moqui.device.DeviceGroupMember" list="members">
+                    <econdition field-name="deviceId" from="groupId"/>
+                </entity-find>
+                <iterate list="members.filter((member => member.statusId == null || member.statusId === 'DgmsAlive'))" entry="member">
+                    <if condition="controllerPurposes.includes(member.purposeEnumId) &amp;&amp; !controllerDeviceIds.includes(member.memberDeviceId)">
+                        <set field="controllerDeviceIds" from="controllerDeviceIds.concat([member.memberDeviceId])"/>
+                    </if>
+                    <if condition="!scopedDeviceIds.includes(member.memberDeviceId)">
+                        <set field="scopedDeviceIds" from="scopedDeviceIds.concat([member.memberDeviceId])"/>
+                        <set field="pendingGroupIds" from="pendingGroupIds.concat([member.memberDeviceId])"/>
+                    </if>
+                </iterate>
+            </while>
+            <set field="ready" from="true"/>
+            <set field="message" value="ready"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="StartupSubscriptions" authenticate="false">
+        <description>
+            The subscriptions a gateway starts: the active (fromDate, thruDate) DeviceRequest records of type
+            DrtSubscribe, DrtEvent, DrtStateChange or DrtCyclic whose device is a
+            controller in the scope of the gateway (get#GatewayScope); ordered by priority, sequenceNum, requestName.
+        </description>
+        <in-parameters>
+            <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="gatewayDeviceId"/>
+            <parameter name="ready" type="Boolean"/>
+            <parameter name="message"/>
+            <parameter name="requestNames" type="List"/>
+        </out-parameters>
+        <actions>
+            <service-call name="moqui.device.FieldbusServices.get#GatewayScope" out-map="scope"
+                    in-map="{gatewayDeviceId:gatewayDeviceId}"/>
+            <set field="gatewayDeviceId" from="scope.gatewayDeviceId"/>
+            <set field="ready" from="scope.ready"/>
+            <set field="message" from="scope.message"/>
+            <set field="requestNames" from="[]"/>
+            <if condition="!ready"><return/></if>
+            <entity-find entity-name="moqui.device.DeviceRequest" list="requestList">
+                <econdition field-name="deviceId" operator="in" from="scope.controllerDeviceIds"/>
+                <econdition field-name="requestTypeEnumId" operator="in" from="['DrtSubscribe', 'DrtEvent', 'DrtStateChange', 'DrtCyclic']"/>
+                <date-filter/>
+            </entity-find>
+            <!-- a request without priority or sequenceNum sorts last -->
+            <set field="requestNames" from="Array.from(requestList).sort((a, b) => {
+                    const key = value => value == null ? 999999 : (typeof value.toNumber === 'function' ? value.toNumber() : Number(value));
+                    return (key(a.priority) - key(b.priority)) || (key(a.sequenceNum) - key(b.sequenceNum))
+                        || (a.requestName &lt; b.requestName ? -1 : (a.requestName > b.requestName ? 1 : 0));
+                }).map(r => r.requestName)"/>
+        </actions>
+    </service>
+
+
+    <service verb="get" noun="SubscriptionState" type="rust" location="moqui_device::fieldbus::subscription_state"
+            authenticate="false" transaction="ignore">
+        <description>The subscriptions of this process: running, and ended without an unsubscribe.</description>
+        <in-parameters>
+            <parameter name="claimStartup" type="Boolean"><description>true: claim the startup restoration;
+                startupClaimed is true for the first claim in this process only.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="activeRequestNames" type="List"/>
+            <parameter name="droppedRequestNames" type="List"/>
+            <parameter name="startupClaimed" type="Boolean"/>
+        </out-parameters>
+    </service>
+
+    <service verb="start" noun="Subscriptions" type="rust" location="moqui_device::restoration::start"
+            authenticate="false" transaction="ignore">
+        <description>
+            Starts the subscriptions of this gateway (get#StartupSubscriptions) after a start, and
+            restarts those that lost their connection. Each call makes at most one due attempt per request; the scheduled
+            job calls it every minute and no service thread sleeps between attempts. maxAttempts is the total of a
+            failure cycle, not a new budget on every call; raising it allows more attempts after exhaustion. An explicit
+            unsubscribe stops the restoration of that request. The property device_gateway_restore_subscriptions=false
+            turns it off for this instance.
+        </description>
+        <in-parameters>
+            <parameter name="maxAttempts" type="Integer" default="3"/>
+            <parameter name="retryDelayMillis" type="Long" default="60000"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="startedRequestNames" type="List"/>
+            <parameter name="failedRequestNames" type="List"/>
+            <parameter name="pendingRequestNames" type="List"/>
+            <parameter name="exhaustedRequestNames" type="List"/>
+            <parameter name="discoveryAttemptCount" type="Long"/>
+            <parameter name="discoveryExhausted" type="Boolean"/>
+        </out-parameters>
+    </service>
+    <!-- ========== Samples ========== -->
+
+    <service verb="notify" noun="InboundState" authenticate="false">
+        <description>
+            Tells the users, with a notification on the topic DeviceGatewayInboundFailed or DeviceGatewayInboundRecovered, that the samples of a
+            subscription or polling request have failed to store for device_gateway_error_notification_seconds
+            (inboundError), or store again after such a notice (inboundRecovered). Called by the persistence worker.
+        </description>
+        <in-parameters>
+            <parameter name="requestName" required="true"/>
+            <parameter name="deviceId" required="true"/>
+            <parameter name="eventType" required="true"><description>inboundError or inboundRecovered</description></parameter>
+            <parameter name="errorMessage"/>
+            <parameter name="errorDurationSeconds" type="Long"/>
+        </in-parameters>
+        <actions>
+            <set field="failing" from="eventType === 'inboundError'"/>
+            <service-call name="moqui.device.DeviceServices.send#DeviceNotification" in-map="{deviceId:deviceId,
+                    topic:(failing ? 'DeviceGatewayInboundFailed' : 'DeviceGatewayInboundRecovered'),
+                    requestName:requestName, eventType:eventType,
+                    title:(failing ? 'Device data not stored' : 'Device data stored again') + ' (' + requestName + ')',
+                    text:failing ? ('The values of request ' + requestName + ' have not been stored for '
+                        + (errorDurationSeconds || 0) + ' s: ' + (errorMessage || 'unknown error'))
+                        : ('The values of request ' + requestName + ' are stored again after '
+                        + (errorDurationSeconds || 0) + ' s of errors.')}"/>
+        </actions>
+    </service>
+
+    <service verb="notify" noun="AcquisitionError" authenticate="false" transaction="force-new">
+        <in-parameters>
+            <parameter name="requestName" required="true"/>
+            <parameter name="errorMessage" required="true"/>
+        </in-parameters>
+        <actions>
+            <log level="error" message="Device acquisition ${requestName}: ${errorMessage}. Other values continue."/>
+            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request"/>
+            <if condition="!request"><return/></if>
+            <service-call name="moqui.device.DeviceServices.send#DeviceNotification"
+                in-map="{deviceId:request.deviceId, topic:'DeviceGatewayInboundFailed', requestName:requestName,
+                    eventType:'acquisitionError', title:'Device acquisition error (' + requestName + ')', text:errorMessage}"/>
+        </actions>
+    </service>
+
+    <!-- Drivers pass already decoded logical values. Persistence is independent of a protocol or ToolFactory. -->
+    <service verb="store" noun="Samples" type="rust" location="moqui_device::inbound::store_samples"
+            authenticate="false" transaction="ignore">
+        <description>Store logical samples of declared request items. Only DrpLogging creates ParameterLog;
+            a missing purpose updates current Parameter values, writing only the last value of each parameter.
+            Samples are written in chunks of 1000, one transaction each: the reads first, then the writes sent
+            together, as a data load does. Results preserve input order; malformed or out-of-scope rows do not
+            suppress later valid rows. When a chunk fails and the database answers, its samples are stored one by
+            one to isolate the failing row. When the database does not answer, retryable is true and nothing from
+            retryFromIndex on is stored: the caller keeps those samples (an MQTT session keeps them unacknowledged in
+            the broker) and sends them again. A log row with the device-stamped sourceTime, or the sequenceNum, of a
+            row already stored is a duplicate, not an error: a broker redelivers what was stored but not yet
+            acknowledged. Use after#Samples for failure-isolated after-store extensions.</description>
+        <in-parameters>
+            <parameter name="requestName" required="true"/>
+            <parameter name="samples" type="List"><description>Maps: deviceId, parameterId, value, optional
+                sourceTime and receivedTime (timestamps), quality, optional log sequenceNum. Numeric values remain decimals.</description></parameter>
+            <parameter name="acquisitionErrors" type="List"><description>Transport/decode errors reported without dropping valid samples.</description></parameter>
+            <parameter name="notifyErrors" type="Boolean" default="true"><description>False when the continuous host supplies its rate-limited health notifier.</description></parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="results" type="List"/>
+            <parameter name="storedCount" type="Long"/>
+            <parameter name="failedCount" type="Long"/>
+            <parameter name="duplicateCount" type="Long"/>
+            <parameter name="acquisitionErrorCount" type="Long"/>
+            <parameter name="retryable" type="Boolean"><description>The database did not answer: the samples from
+                retryFromIndex on were not stored and are to be sent again.</description></parameter>
+            <parameter name="retryFromIndex" type="Long"/>
+        </out-parameters>
+    </service>
+
+    <service verb="store" noun="LogSamples" type="rust" location="moqui_device::inbound::store_samples"
+            authenticate="false" transaction="ignore">
+        <description>Store decoded diagnostic events: ParameterLog for an exact parameterId, otherwise DeviceLog.
+            The device must be the request owner or an alive descendant in its explicit device group hierarchy.
+            Optional logValueKind is numeric, enumeration or message. Events always create logs.
+            This service performs no wire-format decoding and needs no driver installed.</description>
+        <implements service="moqui.device.FieldbusServices.store#Samples"/>
+    </service>
+
+    <service verb="after" noun="Samples" authenticate="false" transaction="ignore">
+        <description>Extension hook after a successful sample batch has committed. Attach SECAs here for local
+            after-store callbacks. Hook errors are logged and isolated from the saved data and persistence health.</description>
+        <in-parameters>
+            <parameter name="requestName" required="true"/>
+            <parameter name="samples" type="List"/>
+            <parameter name="results" type="List"/>
+            <parameter name="storedCount" type="Long"/>
+            <parameter name="failedCount" type="Long"/>
+        </in-parameters>
+        <actions/>
+    </service>
+</services>

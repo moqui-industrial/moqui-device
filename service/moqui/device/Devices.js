@@ -251,7 +251,7 @@ function configExportFiles(p) {
         }
 
         if (!config.approximatedFunctionId) continue
-        ec.service.sync().name("moqui.device.DeviceServices.get#TrajectoryAxes")
+        ec.service.sync().name("moqui.device.DeviceGatewayServices.get#TrajectoryAxes")
             .parameters({approximatedFunctionId: config.approximatedFunctionId}).call()
         if (ec.message.hasError()) return {}
         if (!trajectoryLines(config.approximatedFunctionId, g)) return {}
@@ -275,7 +275,97 @@ function configExportFiles(p) {
     return {files, rowCount}
 }
 
-const operations = {notify, applyConfig, configExportFiles}
+// ========== File transfer ==========
+
+// A transfer error is thrown: the caller records it and tells the user.
+const fail = message => { throw new Error(message) }
+
+// The options of a transfer destination: a query string or JSON (DeviceConnection.options, the query of the endpoint).
+function destinationOptions(raw, options = {}) {
+    const text = raw == null ? "" : String(raw).trim()
+    if (!text) return options
+    const pairs = text.startsWith("{") ? Object.entries(JSON.parse(text))
+        : text.replace(/^\?/, "").split("&").filter(pair => pair).map(pair => {
+            const at = pair.indexOf("=")
+            return at < 0 ? [decodeURIComponent(pair), ""] : [decodeURIComponent(pair.slice(0, at)), decodeURIComponent(pair.slice(at + 1))]
+        })
+    for (const [key, value] of pairs) {
+        if (key in options) fail("Duplicate transfer option " + key)
+        options[key] = value == null ? null : String(value)
+    }
+    return options
+}
+const fileName = name => {
+    const text = name == null ? "" : String(name)
+    if (!text || text === "." || text === ".." || /[\/\\:\u0000-\u001f\u007f]/.test(text)) fail("A transferred file needs a file name, not a path: " + text)
+    return text
+}
+// A credential option, or the environment variable or property that its ...Env option names.
+function credential(options, name) {
+    const value = options[name], variable = options[name + "Env"]
+    if (value != null && variable != null) fail("Set the " + name + " or the " + name + "Env of the destination, not both")
+    if (variable == null) return value
+    const found = System.getProperty(variable)
+    if (found == null) fail("The environment variable " + variable + " of the destination is not set")
+    return String(found)
+}
+
+// Writes files to a destination: file:directory through the resource facade, or sftp://host:port/directory with
+// SftpClient (options host-key-fingerprint, required, username and password or private-key-file, each also as
+// ...Env). files: maps with name and bytes or content (text).
+function transferFiles(p) {
+    let endpoint = nonEmpty(p.endpoint)
+    if (!endpoint) fail("The transfer has no destination: set DeviceRequest.brokerUri or DeviceConnection.transportConfig")
+    const files = Array.from(p.files || [])
+    if (!files.length) fail("No files to transfer")
+    const options = destinationOptions(p.options)
+    const query = endpoint.indexOf("?")
+    if (query >= 0) {
+        destinationOptions(endpoint.slice(query + 1), options)
+        endpoint = endpoint.slice(0, query)
+    }
+    const transferred = []
+    if (endpoint.startsWith("file:")) {
+        const directory = endpoint.replace(/\/+$/, "")
+        for (const file of files) {
+            const location = directory + "/" + fileName(file.name)
+            const reference = ec.resource.getLocationReference(location)
+            if (file.bytes != null) reference.putBytes(file.bytes)
+            else if (file.content != null) reference.putText(String(file.content))
+            else fail("The file " + file.name + " has no bytes or content")
+            transferred.push(location)
+        }
+        return {transferredFiles: transferred}
+    }
+    const sftp = /^sftp:\/\/([^\/:@?#]+)(?::(\d+))?(\/[^?#]*)?$/.exec(endpoint)
+    if (!sftp) fail("Unsupported transfer destination " + endpoint + ": use file:directory or sftp://host:port/directory")
+    const fingerprint = options["host-key-fingerprint"]
+    if (!fingerprint || !fingerprint.startsWith("SHA256:")) fail("SFTP requires a pinned SHA256: host-key-fingerprint")
+    const username = credential(options, "username") || credential(options, "userName")
+    if (!username) fail("SFTP requires a username")
+    const password = credential(options, "password")
+    const client = new SftpClient(sftp[1], username, sftp[2] ? Number(sftp[2]) : null)
+    client.hostKeyFingerprint(fingerprint)
+    if (password != null) client.password(password)
+    else if (options["private-key-file"]) client.publicKeyPkcs8(ec.resource.getLocationReference("file:" + options["private-key-file"]).getText(), null)
+    else fail("SFTP requires a password or a private-key-file")
+    const directory = (sftp[3] || "/").replace(/\/+$/, "") || "/"
+    const base = "sftp://" + sftp[1] + (sftp[2] ? ":" + sftp[2] : "") + (directory === "/" ? "" : directory)
+    client.connect()
+    try {
+        for (const file of files) {
+            const name = fileName(file.name)
+            if (file.bytes == null && file.content == null) fail("The file " + file.name + " has no bytes or content")
+            client.put(directory, name, file.bytes != null ? file.bytes : String(file.content), null, true)
+            transferred.push(base + "/" + name)
+        }
+    } finally {
+        client.close()
+    }
+    return {transferredFiles: transferred}
+}
+
+const operations = {notify, applyConfig, configExportFiles, transferFiles}
 ;({
     execute(op, parameters) {
         if (!operations[op]) throw new Error("Unknown device operation " + op)

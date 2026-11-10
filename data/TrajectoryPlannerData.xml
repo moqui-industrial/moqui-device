@@ -58,7 +58,7 @@ along with this software (see the LICENSE.md file). If not, see
     <!-- ========== Gateway device + DeviceRequest for export#Trajectory ========== -->
     <!--
         Minimal records needed to test moqui.device.DeviceGatewayServices.export#Trajectory.
-        Replace brokerUri with the actual gateway address in production.
+        brokerUri is the MQTT broker the trajectory is published to; replace it in production.
         The MQTT topic in DeviceRequest.query must match the MqttParameterSub subscription
         on the PLC side (JsonToParametersMapper expected keys: "X","Y","Z","A","B","C"
         for TCP pose trajectories, or "J1"…"J6" for joint-space trajectories).
@@ -75,10 +75,10 @@ along with this software (see the LICENSE.md file). If not, see
         deviceId="moqui-device-gateway1"
         routerEnumId="DrrMoquiDeviceGateway"
         requestTypeEnumId="DrtWrite"
-        brokerUri="http://localhost:8081"
+        brokerUri="mqtt://localhost:1883"
         query="moqui/robot/arm1/trajectory"
-        timeout="30"
-        description="Exports 6-DOF robot arm trajectory waypoints to moqui-device-gateway for MQTT publishing (ephemeral bulk path)."/>
+        timeout="30000"
+        description="Publishes 6-DOF robot arm trajectory waypoints over MQTT (ephemeral bulk path)."/>
 
     <!-- ========== MathModelDef: 6-DOF TCP waypoint planner ========== -->
     <!-- 

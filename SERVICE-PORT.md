@@ -2,9 +2,11 @@
 
 ## Ownership
 
-`moqui-device` owns the model and protocol-neutral application services, declared
-in `service/moqui/device/DeviceServices.xml` and `TrajectoryPlannerServices.xml`.
-The layout is the one of mr-mantle:
+`moqui-device` owns the model and every service, declared in
+`service/moqui/device/`: `DeviceServices.xml` (the Groovy services),
+`FieldbusServices.xml` (requests on the drivers, subscriptions, stored values),
+`DeviceGatewayServices.xml` (the services that called the Camel gateway) and
+`TrajectoryPlannerServices.xml`. The layout is the one of mr-mantle:
 
 - Each service declares its parameters in XML. A Groovy service written as XML Actions
   stays XML Actions, with JavaScript expressions (`run#DeviceRequest`,
@@ -14,22 +16,27 @@ The layout is the one of mr-mantle:
   `service/moqui/device/Devices.js`, which the service calls with
   `ec.resource.script(...).execute(operation, context)`, as the Mantle libraries
   (`Payables.js`, `Quality.js`) are called: `notify` (`send#DeviceNotification`),
-  `applyConfig` (`apply#DeviceConfig`) and `configExportFiles`
-  (`get#DeviceConfigExportFiles`).
+  `applyConfig` (`apply#DeviceConfig`), `configExportFiles`
+  (`get#DeviceConfigExportFiles`) and `transferFiles` (the `file:` and `sftp://`
+  destinations of `export#DeviceConfig` and `transfer#DeviceContent`).
 - The Groovy class `org.moqui.device.TrajectoryGenerator` of the trajectory planner,
   and the work of the planner's scripts on bytes and numbers, is the Rust tool
   `TrajectoryGenerator` (`src/trajectory.rs`); ONNX Runtime takes the place of DJL.
-- Rust also handles sample persistence and the bytes of a DeviceContent.
+- Rust also handles the fieldbus requests (`src/fieldbus.rs`: a DeviceRequest and
+  its items become a request of the gateway facade), the sample queue and its
+  worker (`src/fieldbus_store.rs`, tool `DeviceSampleStore`), the restoration of
+  subscriptions (`src/restoration.rs`), sample persistence (`src/inbound.rs`) and
+  the bytes of a DeviceContent (`src/content.rs`).
 
 No JDBC, raw SQL, HTTP gateway client or protocol library is required here.
 
-`moqui-device-gateway` supplies local native implementations of
-`run#DeviceRequestInternal`. Its optional Moqui binding translates the resolved
-context into the reusable Rust `DeviceFacade` API. That trait and the transport
-implementations must remain usable without Moqui, including by a future RuSTy
-host in moqui-plc. A RuSTy caller supplies its own configuration and sample sink;
-it must not need an ExecutionContext, an Entity Engine or Moqui service calls.
-This reuse does not establish hard-real-time or safety guarantees.
+`moqui-device-gateway` (branch `mr-moqui`) is a Rust driver library this
+component depends on (Cargo and `component.xml`), as moqui-plc4j's services used
+PLC4J: backends for MQTT, OPC UA and Modbus TCP behind `DeviceGatewayFacade`, and
+the `DeviceGateway` tool that holds one facade in MR-Moqui. It has no services and
+no entity access; its API stays usable without Moqui, for example by a future
+RuSTy host in moqui-plc with its own sample sink. This reuse does not establish
+hard-real-time or safety guarantees.
 
 ## Migration Map
 
@@ -46,17 +53,33 @@ Actions and JavaScript in the mr-moqui and mr-mantle style:
 | `receive#GatewayRequestCallback` | Same name and parameters; called locally, so no longer `allow-remote` |
 | `apply#DeviceConfig` | Same contract |
 | `run#DeviceRequestGroup` | Same contract; `distribute=true` is an error (no distributed dispatch on MR-Moqui) |
-| `run#DeviceRequest` | Same contract: a dispatcher to `DeviceRequest.runServiceName` |
+| `run#DeviceRequest` | Same contract: a dispatcher to `DeviceRequest.runServiceName`; without one, the driver of the connection (`FieldbusServices.run#FieldbusRequest`). It also returns the outputs of the request (`status`, `errorMessage`, ...) and passes an MQTT `payload` |
 | `run#DeviceRequestInternal` | Same interface: device, request, connection, requestItemList, bulkRequestItemList |
 | DeviceContent services | Same contracts, on MR resources and FileItem |
 
-The export and transfer routes of the Camel gateway (`DeviceGatewayServices.xml`
-of the Groovy version) are local services in `DeviceServices.xml`:
+`DeviceGatewayServices.xml` keeps the services of the Groovy version, with the same
+names and parameters. They called the Camel gateway over REST; they run here now,
+and the Camel routes became these services:
 
-| Groovy/Camel | Port |
+| Groovy service / Camel route | Port |
 | --- | --- |
-| `export#DeviceConfig` (route `run-device-config-export`) | `get#DeviceConfigExportFiles` renders the recipe, `export#DeviceConfig` sends it with `transfer#DeviceContent` |
-| `transfer#DeviceContent` (Camel file/SFTP route) | `transfer#DeviceContent` hands the files to the implementation of the DeviceRequest (`runServiceName`) |
+| `run#GatewayDeviceRequest` / `dispatch-device-request` | `run#DeviceRequest` of the request in the `query` of the routing request |
+| `export#DeviceConfig` / `run-device-config-export`, `transfer-file` (and `file.transfer.uri.2`) | `get#DeviceConfigExportFiles` (the export SQL on the Entity Engine) renders the files; they are written to the `DeviceConnection` of the request, else to `device_config_export_location` (and `_2`); notified with `receive#GatewayRequestCallback` |
+| `transfer#DeviceContent` / `transfer-device-content` | The file goes to the `file:` or `sftp://` destination of the request in the `query` (resource facade, `SftpClient`); no Base64 REST hop |
+| `export#Trajectory` / `/api/trajectory/export` (advertised, never exposed by the gateway) | `get#TrajectoryAxes`, then one MQTT payload message through `run#DeviceRequest`; the request's `brokerUri` is now the broker |
+| `receive#GatewayNotification` / `InboundErrorNotifier` | The sample worker notifies itself (`FieldbusServices.notify#InboundState`); the service does the same for an external caller instead of only logging |
+| `mqtt-read-*`, `opcua-read-*` consumers | `FieldbusServices.run#FieldbusRequest` on the gateway drivers, subscriptions into the sample queue |
+| `store-device-request-inbound`, `store-parameter-batch`, `store-log-batch` | `FieldbusServices.store#Samples` (current values or `ParameterLog`, by purpose) from the sample worker |
+| `plc-log-consumer`, `plc-log-ingest-*` | `FieldbusServices.run#PlcLogRequest` and `store#LogSamples` (`ParameterLog` with a source, `DeviceLog` without) |
+| `after-store-callback` | SECAs on `FieldbusServices.after#Samples` |
+| startup subscription discovery, gateway scope | `FieldbusServices.get#GatewayScope`, `get#StartupSubscriptions`, `start#Subscriptions` (service job `start_DeviceGatewaySubscriptions`) |
+
+The Groovy data run unchanged: the routing requests keep
+`runServiceName="moqui.device.DeviceGatewayServices.*"`, and the requests in their
+`query` have no `runServiceName`, so they run on the driver of their endpoint, as
+the Camel gateway chose its route. Two data changes: `ROBOT_ARM_TRAJECTORY_EXPORT`
+has the broker as `brokerUri` (it was the gateway REST address) and a timeout in
+milliseconds, and the driver enumeration has `DcdMqtt`.
 
 `TrajectoryPlannerServices.xml` keeps the services of the Groovy version with their
 names and parameters:
@@ -78,12 +101,8 @@ and the `Onnx` tool, `call#InferenceEndpoint`, `get#DeviceImage`, `check#Pose`,
 `TrajectoryPlannerServices.get#TrajectoryAxes` and `export#Trajectory`) are removed.
 The crate `examples/onnx-obstacle` is a separate experiment and is unchanged.
 
-The other services of `DeviceGatewayServices.xml` (`run#GatewayDeviceRequest`,
-`export#Trajectory`, `receive#GatewayNotification`) and the services the Rust
-gateway added (gateway scope, startup subscriptions, sample persistence and its
-notices) are reviewed in the next step. Until then they stay in their sections
-of `DeviceServices.xml`. `DeviceConfigServices.xml`, which only repeated
-`get#DeviceConfigExportFiles` and `export#DeviceConfig` under other names, is removed.
+`DeviceConfigServices.xml`, which only repeated `get#DeviceConfigExportFiles` and
+`export#DeviceConfig` under other names, is removed.
 
 ## Preserved Contracts And Corrections
 
@@ -134,18 +153,12 @@ and acquisition notices inside `run#DeviceRequest`, and `notify#DeviceRequestRes
 ## Verification And Remaining Boundary
 
 Build from mr-moqui with `./moq build --debug -j 4` and run the component specs
-with `./moq test moqui-device`. Inference and provider cases are opt-in (see
-`test/README.md`). No gateway component, broker, PLC, GPU or Node.js is needed.
-
-The review of Java/PLC4J request configurations for the gateway services, and the
-runners for the gateway service policies, are not part of this pass; they return
-with the gateway services.
+with `./moq test moqui-device`. Inference, provider and fieldbus cases are opt-in
+(see `test/README.md`). `scripts/run-fieldbus-tests.py` starts local Modbus, OPC
+UA, MQTT and SFTP peers and runs them all; `scripts/run-acceptance.py` adds broker
+loss, database outage and restart. Both need Docker with the `atmoz/sftp:alpine`
+and `apache/activemq-artemis` images.
 
 **Known framework gap:** distributed service dispatch is not implemented by this
 MR host. `distribute=true` fails explicitly before any I/O; it is not equivalent
 to Java's distributed mode and must not be silently mapped to local async work.
-
-The gateway services are the next step: the services of `DeviceGatewayServices.xml`
-become local services, implemented here or in the mr-moqui branch of
-moqui-device-gateway. Until then the gateway's own tests that rely on the removed
-`run#DeviceRequest` features (status outputs, retries, payload, read storage) fail.

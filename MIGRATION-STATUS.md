@@ -67,8 +67,11 @@ its absence is unrelated to model/schema validation.
 
 ## Next Boundary
 
-The subsequent service pass consolidates protocol-neutral application behavior
-in DeviceServices.xml; see [the service porting map](SERVICE-PORT.md). The native
-gateway is a local adapter component, not a remote process. Its reusable Rust
-DeviceFacade contract must also support a future RuSTy host without Moqui.
-The service tests do not certify protocol libraries or the PLC runtime.
+The services are in this component; see [the service porting map](SERVICE-PORT.md).
+The model changes for them are one driver enumeration (`DcdMqtt`, so that
+`run#DeviceRequest` can choose the MQTT driver from `DeviceConnection.driverEnumId`)
+and, in `TrajectoryPlannerData.xml`, the broker and a millisecond timeout on
+`ROBOT_ARM_TRAJECTORY_EXPORT`. moqui-device-gateway is a Rust driver library in
+the same process, not a remote process; its facade must also support a future
+RuSTy host without Moqui. The service tests do not certify protocol libraries or
+the PLC runtime.

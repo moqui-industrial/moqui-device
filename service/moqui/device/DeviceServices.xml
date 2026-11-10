@@ -173,18 +173,26 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
     </service>
     <service verb="run" noun="DeviceRequest" authenticate="false" transaction="ignore">
-        <description>Run a device request.</description>
+        <description>Run a device request: with its runServiceName, else on the driver of its connection
+            (FieldbusServices.run#FieldbusRequest).</description>
         <in-parameters>
             <parameter name="requestName" required="true"/>
+            <parameter name="payload" type="Map"><description>The message of an MQTT write without items.</description></parameter>
         </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="samples" type="List"/>
+            <parameter name="storedCount" type="Long"/>
+            <parameter name="itemResults" type="List"/>
+            <parameter name="subscriptionId"/>
+            <parameter name="errorMessage"/>
+        </out-parameters>
         <actions>
             <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request" cache="true"/>
             <if condition="!request">
                 <return error="true" message="Device request not found. Could not run the device request with name ${requestName}."/>
             </if>
-            <if condition="!request.runServiceName">
-                <return error="true" message="The device request does not have a service set. Could not run the device request with name ${requestName}."/>
-            </if>
+            <set field="runServiceName" from="request.runServiceName || 'moqui.device.FieldbusServices.run#FieldbusRequest'"/>
 
             <entity-find-one entity-name="moqui.device.Device" value-field="device" cache="true">
                 <field-map field-name="deviceId" from="request.deviceId"/>
@@ -228,14 +236,15 @@ along with this software (see the LICENSE.md file). If not, see
                     <return message="The device request with name ${requestName} has no changed parameters to write."/>
                 </if>
             </if>
-            <if condition="!bulkRequestItemList.length &amp;&amp; !requestItemList.length &amp;&amp; !request.query">
+            <if condition="!bulkRequestItemList.length &amp;&amp; !requestItemList.length &amp;&amp; !request.query
+                    &amp;&amp; request.requestTypeEnumId !== 'DrtUnsubscribe'">
                 <return message="The device request with name ${requestName} has no items to process."/>
             </if>
             <log level="info" message="Running device request with name ${request.requestName}."/>
-            <!-- Call the configured service. -->
-            <service-call name="${request.runServiceName}" in-map="{device:device, request:request,
+            <!-- Call the configured service, or the driver of the connection. -->
+            <service-call name="${runServiceName}" in-map="{device:device, request:request,
                 connection:connection,
-                bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList}"
+                bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList, payload:payload}"
                 out-map="context" disable-authz="true" transaction="ignore"/>
         </actions>
     </service>
@@ -249,166 +258,6 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="requestItemList" type="List"/>
             <parameter name="bulkRequestItemList" type="List"/>
         </in-parameters>
-    </service>
-
-    <!-- ========== Device Config Export and Device Content Transfer ========== -->
-    <!-- export#DeviceConfig renders the recipe of a DeviceRuleSet and sends it with transfer#DeviceContent, which hands
-         the files to the implementation of the DeviceRequest (for example a file or SFTP endpoint). -->
-
-    <service verb="get" noun="DeviceConfigExportFiles">
-        <description>
-            Renders the recipe of a DeviceRuleSet as text files, one per DeviceRule priority, named
-            ruleSetName_pNN.txt. Each line is name:=value, sorted by name.
-
-            Parameter lines: the Parameter records of the DeviceConfig of each DeviceRule. The name is the
-            requestItemName of a DeviceRequestItem of the Parameter when there is one; otherwise it depends on
-            DeviceConfig.deviceTypeEnumId: DtPLC gives dev.alias, DtMoquiPlc* gives dev.deviceName.alias, any other
-            type gives the alias, or deviceName.parameterName. The alias is Parameter.parameterAlias, or
-            ParameterDef.parameterName; deviceName is PhysicalDevice.deviceName, or the deviceId of the rule. The value
-            is numericValue, else parameterEnumId, else symbolicValue.
-
-            Trajectory lines, when the DeviceConfig has an approximatedFunctionId: Trajectory.trajectoryId,
-            Trajectory.pointCount and, for each TrajectoryPoint (index sequenceNum - 1),
-            Trajectory.points[i].pos.v[d] (VectorComponent.realValue), .sequenceNum, .timeOffsetMs, .isBreakPoint,
-            .hasBlendingOverride, .bufferMode and .transitionMode (from blendingEnumId), .blendingMode
-            (ParametricPathPoint.tolerance).
-        </description>
-        <in-parameters>
-            <parameter name="deviceRuleSetId" required="true"/>
-            <parameter name="deviceId"><description>Only the rules of this device.</description></parameter>
-            <parameter name="deviceRuleId"><description>Only this rule.</description></parameter>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="files" type="List"><description>Maps with name, content, priority and rowCount.</description></parameter>
-            <parameter name="rowCount" type="Integer"/>
-        </out-parameters>
-        <actions>
-            <set field="devices" from="ec.resource.script('component://moqui-device/service/moqui/device/Devices.js')"/>
-            <set field="answer" from="devices.execute('configExportFiles', context)"/>
-            <set field="files" from="answer.files"/>
-            <set field="rowCount" from="answer.rowCount"/>
-        </actions>
-    </service>
-
-    <service verb="export" noun="DeviceConfig" authenticate="false" transaction="ignore">
-        <description>
-            Exports a device configuration recipe (Codesys txt-recipe format): get#DeviceConfigExportFiles renders one
-            file per DeviceRule priority, {ruleSetName}_p{priority:02d}.txt, and transfer#DeviceContent sends the files
-            with the DrtConfigWrite DeviceRequest of requestName. The result is notified with
-            receive#GatewayRequestCallback (exportCompleted, or writeFailed).
-
-            Persistent trajectories (one Parameter per axis per waypoint, under a dedicated DeviceRuleSet) are exported
-            by this same service; export#Trajectory is the ephemeral path.
-        </description>
-        <in-parameters>
-            <parameter name="deviceRuleSetId" required="true"/>
-            <parameter name="deviceId"><description>Optional. When set, limits the export to parameters belonging to
-                this device's rules only.</description></parameter>
-            <parameter name="deviceRuleId"><description>Optional. When set, limits the export to a single DeviceRule.
-                Can be combined with deviceId for more specific filtering.</description></parameter>
-            <parameter name="requestName" required="true"><description>The DrtConfigWrite DeviceRequest that sends the
-                files.</description></parameter>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="status"/>
-            <parameter name="files" type="List"><description>Maps with name, priority and rowCount.</description></parameter>
-            <parameter name="rowCount" type="Integer"/>
-            <parameter name="transferredFiles" type="List"/>
-            <parameter name="errorMessage"/>
-        </out-parameters>
-        <actions>
-            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request" cache="true">
-                <field-map field-name="requestName"/>
-            </entity-find-one>
-            <if condition="!request"><return error="true" message="DeviceRequest ${requestName} not found."/></if>
-            <if condition="request.requestTypeEnumId !== 'DrtConfigWrite'">
-                <return error="true" message="DeviceConfig export requires a DrtConfigWrite request: ${requestName}."/>
-            </if>
-            <service-call name="moqui.device.DeviceServices.get#DeviceConfigExportFiles" out-map="rendered"
-                    in-map="{deviceRuleSetId:deviceRuleSetId, deviceId:deviceId, deviceRuleId:deviceRuleId}"/>
-            <set field="files" from="(rendered.files || []).map(f => ({name:f.name, priority:f.priority, rowCount:f.rowCount}))"/>
-            <set field="rowCount" from="rendered.rowCount || 0"/>
-            <if condition="!files.length">
-                <return error="true" message="DeviceRuleSet ${deviceRuleSetId} has no parameters or trajectory points to export."/>
-            </if>
-            <service-call name="moqui.device.DeviceServices.transfer#DeviceContent" out-map="transferOut"
-                    in-map="{requestName:requestName, transferFiles:rendered.files}"/>
-            <set field="status" from="transferOut.status"/>
-            <set field="transferredFiles" from="transferOut.transferredFiles"/>
-            <set field="errorMessage" from="transferOut.errorMessage"/>
-            <service-call name="moqui.device.DeviceServices.receive#GatewayRequestCallback" disable-authz="true"
-                    in-map="{eventType:(status === 'completed' ? 'exportCompleted' : 'writeFailed'), requestName:requestName,
-                        status:status, protocol:'Device Config Export', routeId:'run-device-config-export', rowCount:rowCount,
-                        message:(status === 'completed' ? ('Device configuration export completed for rule set ' + deviceRuleSetId + '.') : errorMessage)}"/>
-            <log level="info" message="DeviceConfig export of rule set ${deviceRuleSetId} with request ${requestName}: ${status}, ${files.length} file(s), ${rowCount} line(s)"/>
-            <if condition="status !== 'completed'">
-                <message error="true">${errorMessage || ('DeviceConfig export with request ' + requestName + ': ' + status + '.')}</message>
-            </if>
-        </actions>
-    </service>
-
-    <service verb="get" noun="DeviceContentTransferFiles" type="rust" location="moqui_device::content::transfer_files">
-        <description>Read the content owned by the request device through Moqui resources. Return binary files for
-            any local driver; no Base64, HTTP gateway, protocol parsing or driver dependency.</description>
-        <in-parameters><parameter name="requestName" required="true"/><parameter name="deviceContentId" required="true"/></in-parameters>
-        <out-parameters><parameter name="transferFiles" type="List"/></out-parameters>
-    </service>
-    <service verb="transfer" noun="DeviceContent" authenticate="false" transaction="ignore">
-        <description>
-            Transfers files (G-Code, CNC program, firmware, recipe, etc.) to a device: the DeviceContent of
-            deviceContentId, read from DeviceContent.contentLocation through the resource facade, and the transferFiles.
-            The files go to the implementation of the DeviceRequest of requestName (its runServiceName, for example a
-            file or SFTP endpoint of moqui-device-gateway), as transferFiles: Maps with name and content (text) or bytes.
-            The request is a DrtContentTransfer, or a DrtConfigWrite for the recipe files of export#DeviceConfig.
-        </description>
-        <in-parameters>
-            <parameter name="requestName" required="true"/>
-            <parameter name="deviceContentId"/>
-            <parameter name="transferFiles" type="List"/>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="status"/>
-            <parameter name="transferredFiles" type="List"/>
-            <parameter name="errorMessage"/>
-        </out-parameters>
-        <actions>
-            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request" cache="true">
-                <field-map field-name="requestName"/>
-            </entity-find-one>
-            <if condition="!request"><return error="true" message="DeviceRequest ${requestName} not found."/></if>
-            <if condition="!['DrtContentTransfer', 'DrtConfigWrite'].includes(request.requestTypeEnumId)">
-                <return error="true" message="A content transfer requires a DrtContentTransfer or DrtConfigWrite request: ${requestName}."/>
-            </if>
-            <if condition="!request.runServiceName">
-                <return error="true" message="The device request ${requestName} does not have a service set."/>
-            </if>
-            <entity-find-one entity-name="moqui.device.Device" value-field="device" cache="true">
-                <field-map field-name="deviceId" from="request.deviceId"/>
-            </entity-find-one>
-            <if condition="request.connectionName">
-                <entity-find-one entity-name="moqui.device.DeviceConnection" value-field="connection" cache="true">
-                    <field-map field-name="connectionName" from="request.connectionName"/>
-                </entity-find-one>
-                <if condition="!connection">
-                    <return error="true" message="DeviceConnection ${request.connectionName} of request ${requestName} not found."/>
-                </if>
-            </if>
-            <set field="files" from="transferFiles || []"/>
-            <if condition="deviceContentId">
-                <service-call name="moqui.device.DeviceServices.get#DeviceContentTransferFiles" out-map="contentOut"
-                        in-map="{requestName:requestName, deviceContentId:deviceContentId}"/>
-                <set field="files" from="files.concat(contentOut.transferFiles)"/>
-            </if>
-            <if condition="!files.length">
-                <return error="true" message="No deviceContentId or transferFiles to transfer with request ${requestName}."/>
-            </if>
-            <service-call name="${request.runServiceName}" out-map="transportOut" disable-authz="true" transaction="ignore"
-                    in-map="{device:device, request:request, connection:connection, transferFiles:files}"/>
-            <set field="status" from="transportOut.status || 'completed'"/>
-            <set field="transferredFiles" from="transportOut.transferredFiles || []"/>
-            <set field="errorMessage" from="transportOut.errorMessage"/>
-            <log level="info" message="DeviceContent transfer with request ${requestName}: ${status}, ${transferredFiles.length} file(s)"/>
-        </actions>
     </service>
 
     <!-- ========== DeviceContent Services ========== -->
@@ -501,305 +350,4 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
     </service>
 
-    <!-- ========== Gateway Scope and Subscriptions ========== -->
-
-    <service verb="get" noun="DeviceGatewayScope" authenticate="false">
-        <description>
-            The identity and scope of a gateway. The gateway must be a Device with a
-            PhysicalDevice and a DgmpEdgeGateway member of at least one DeviceGroup (statusId empty or DgmsAlive). Its
-            scope is those groups and their alive members, recursively; the controllers of the scope are the members
-            with a controller purpose (DgmpProcessPLC, DgmpSafetyPLC, DgmpController, DgmpMotionController,
-            DgmpRemoteIO, DgmpSafetyRemoteIO, DgmpExtremeConditionRemoteIO).
-        </description>
-        <in-parameters>
-            <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="gatewayDeviceId"/>
-            <parameter name="ready" type="Boolean"/>
-            <parameter name="message"/>
-            <parameter name="scopedDeviceIds" type="List"/>
-            <parameter name="controllerDeviceIds" type="List"/>
-        </out-parameters>
-        <actions>
-            <set field="gatewayDeviceId" from="gatewayDeviceId || System.getProperty('device_gateway_device_id') || null"/>
-            <set field="ready" from="false"/>
-            <set field="scopedDeviceIds" from="[]"/>
-            <set field="controllerDeviceIds" from="[]"/>
-            <if condition="!gatewayDeviceId">
-                <set field="message" value="No gateway identity: set the property device_gateway_device_id."/>
-                <return/>
-            </if>
-            <entity-find-one entity-name="moqui.device.Device" value-field="device">
-                <field-map field-name="deviceId" from="gatewayDeviceId"/>
-            </entity-find-one>
-            <entity-find-one entity-name="moqui.device.PhysicalDevice" value-field="physicalDevice">
-                <field-map field-name="deviceId" from="gatewayDeviceId"/>
-            </entity-find-one>
-            <if condition="!device || !physicalDevice">
-                <set field="message" value="Configured gateway ${gatewayDeviceId} does not exist as Device + PhysicalDevice."/>
-                <return/>
-            </if>
-            <entity-find entity-name="moqui.device.DeviceGroupMember" list="gatewayMemberships">
-                <econdition field-name="memberDeviceId" from="gatewayDeviceId"/>
-                <econdition field-name="purposeEnumId" value="DgmpEdgeGateway"/>
-            </entity-find>
-            <set field="pendingGroupIds" from="gatewayMemberships.filter((member => member.statusId == null || member.statusId === 'DgmsAlive')).map(member => member.deviceId)"/>
-            <if condition="!pendingGroupIds.length">
-                <set field="message" value="Gateway ${gatewayDeviceId} is not assigned to any DeviceGroup as DgmpEdgeGateway."/>
-                <return/>
-            </if>
-            <set field="controllerPurposes" from="['DgmpProcessPLC', 'DgmpSafetyPLC', 'DgmpController', 'DgmpMotionController',
-                'DgmpRemoteIO', 'DgmpSafetyRemoteIO', 'DgmpExtremeConditionRemoteIO']"/>
-            <set field="scopedDeviceIds" from="[...pendingGroupIds]"/>
-            <!-- the groups of the gateway and their alive members, recursively -->
-            <while condition="pendingGroupIds.length">
-                <set field="groupId" from="pendingGroupIds.shift()"/>
-                <entity-find entity-name="moqui.device.DeviceGroupMember" list="members">
-                    <econdition field-name="deviceId" from="groupId"/>
-                </entity-find>
-                <iterate list="members.filter((member => member.statusId == null || member.statusId === 'DgmsAlive'))" entry="member">
-                    <if condition="controllerPurposes.includes(member.purposeEnumId) &amp;&amp; !controllerDeviceIds.includes(member.memberDeviceId)">
-                        <set field="controllerDeviceIds" from="controllerDeviceIds.concat([member.memberDeviceId])"/>
-                    </if>
-                    <if condition="!scopedDeviceIds.includes(member.memberDeviceId)">
-                        <set field="scopedDeviceIds" from="scopedDeviceIds.concat([member.memberDeviceId])"/>
-                        <set field="pendingGroupIds" from="pendingGroupIds.concat([member.memberDeviceId])"/>
-                    </if>
-                </iterate>
-            </while>
-            <set field="ready" from="true"/>
-            <set field="message" value="ready"/>
-        </actions>
-    </service>
-
-    <service verb="get" noun="DeviceStartupSubscriptions" authenticate="false">
-        <description>
-            The subscriptions a gateway starts: the active (fromDate, thruDate) DeviceRequest records of type
-            DrtSubscribe, DrtEvent, DrtStateChange or DrtCyclic, run by a configured device implementation service, whose device is a
-            controller in the scope of the gateway (get#DeviceGatewayScope); ordered by priority, sequenceNum, requestName.
-        </description>
-        <in-parameters>
-            <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="gatewayDeviceId"/>
-            <parameter name="ready" type="Boolean"/>
-            <parameter name="message"/>
-            <parameter name="requestNames" type="List"/>
-        </out-parameters>
-        <actions>
-            <service-call name="moqui.device.DeviceServices.get#DeviceGatewayScope" out-map="scope"
-                    in-map="{gatewayDeviceId:gatewayDeviceId}"/>
-            <set field="gatewayDeviceId" from="scope.gatewayDeviceId"/>
-            <set field="ready" from="scope.ready"/>
-            <set field="message" from="scope.message"/>
-            <set field="requestNames" from="[]"/>
-            <if condition="!ready"><return/></if>
-            <entity-find entity-name="moqui.device.DeviceRequest" list="requestList">
-                <econdition field-name="deviceId" operator="in" from="scope.controllerDeviceIds"/>
-                <econdition field-name="requestTypeEnumId" operator="in" from="['DrtSubscribe', 'DrtEvent', 'DrtStateChange', 'DrtCyclic']"/>
-                <econdition field-name="runServiceName" operator="is-not-null"/>
-                <date-filter/>
-            </entity-find>
-            <!-- a request without priority or sequenceNum sorts last -->
-            <set field="requestNames" from="Array.from(requestList).sort((a, b) => {
-                    const key = value => value == null ? 999999 : (typeof value.toNumber === 'function' ? value.toNumber() : Number(value));
-                    return (key(a.priority) - key(b.priority)) || (key(a.sequenceNum) - key(b.sequenceNum))
-                        || (a.requestName &lt; b.requestName ? -1 : (a.requestName > b.requestName ? 1 : 0));
-                }).map(r => r.requestName)"/>
-        </actions>
-    </service>
-
-    <!-- ========== Inbound Samples ========== -->
-
-    <service verb="notify" noun="DeviceInboundState" authenticate="false">
-        <description>
-            Tells the users, with a notification on the topic DeviceGatewayInboundFailed or DeviceGatewayInboundRecovered, that the samples of a
-            subscription or polling request have failed to store for device_gateway_error_notification_seconds
-            (inboundError), or store again after such a notice (inboundRecovered). Called by the persistence worker.
-        </description>
-        <in-parameters>
-            <parameter name="requestName" required="true"/>
-            <parameter name="deviceId" required="true"/>
-            <parameter name="eventType" required="true"><description>inboundError or inboundRecovered</description></parameter>
-            <parameter name="errorMessage"/>
-            <parameter name="errorDurationSeconds" type="Long"/>
-        </in-parameters>
-        <actions>
-            <set field="failing" from="eventType === 'inboundError'"/>
-            <service-call name="moqui.device.DeviceServices.send#DeviceNotification" in-map="{deviceId:deviceId,
-                    topic:(failing ? 'DeviceGatewayInboundFailed' : 'DeviceGatewayInboundRecovered'),
-                    requestName:requestName, eventType:eventType,
-                    title:(failing ? 'Device data not stored' : 'Device data stored again') + ' (' + requestName + ')',
-                    text:failing ? ('The values of request ' + requestName + ' have not been stored for '
-                        + (errorDurationSeconds || 0) + ' s: ' + (errorMessage || 'unknown error'))
-                        : ('The values of request ' + requestName + ' are stored again after '
-                        + (errorDurationSeconds || 0) + ' s of errors.')}"/>
-        </actions>
-    </service>
-
-    <service verb="notify" noun="DeviceAcquisitionError" authenticate="false" transaction="force-new">
-        <in-parameters>
-            <parameter name="requestName" required="true"/>
-            <parameter name="errorMessage" required="true"/>
-        </in-parameters>
-        <actions>
-            <log level="error" message="Device acquisition ${requestName}: ${errorMessage}. Other values continue."/>
-            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request"/>
-            <if condition="!request"><return/></if>
-            <service-call name="moqui.device.DeviceServices.send#DeviceNotification"
-                in-map="{deviceId:request.deviceId, topic:'DeviceGatewayInboundFailed', requestName:requestName,
-                    eventType:'acquisitionError', title:'Device acquisition error (' + requestName + ')', text:errorMessage}"/>
-        </actions>
-    </service>
-
-    <!-- Drivers pass already decoded logical values. Persistence is independent of a protocol or ToolFactory. -->
-    <service verb="store" noun="DeviceSamples" type="rust" location="moqui_device::inbound::store_samples"
-            authenticate="false" transaction="ignore">
-        <description>Store logical samples of declared request items. Only DrpLogging creates ParameterLog;
-            a missing purpose updates current Parameter values, writing only the last value of each parameter.
-            Samples are written in chunks of 1000, one transaction each: the reads first, then the writes sent
-            together, as a data load does. Results preserve input order; malformed or out-of-scope rows do not
-            suppress later valid rows. When a chunk fails and the database answers, its samples are stored one by
-            one to isolate the failing row. When the database does not answer, retryable is true and nothing from
-            retryFromIndex on is stored: the caller keeps those samples (an MQTT session keeps them unacknowledged in
-            the broker) and sends them again. A log row with the device-stamped sourceTime, or the sequenceNum, of a
-            row already stored is a duplicate, not an error: a broker redelivers what was stored but not yet
-            acknowledged. Use after#DeviceSamples for failure-isolated after-store extensions.</description>
-        <in-parameters>
-            <parameter name="requestName" required="true"/>
-            <parameter name="samples" type="List"><description>Maps: deviceId, parameterId, value, optional
-                sourceTime and receivedTime (timestamps), quality, optional log sequenceNum. Numeric values remain decimals.</description></parameter>
-            <parameter name="acquisitionErrors" type="List"><description>Transport/decode errors reported without dropping valid samples.</description></parameter>
-            <parameter name="notifyErrors" type="Boolean" default="true"><description>False when the continuous host supplies its rate-limited health notifier.</description></parameter>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="results" type="List"/>
-            <parameter name="storedCount" type="Long"/>
-            <parameter name="failedCount" type="Long"/>
-            <parameter name="duplicateCount" type="Long"/>
-            <parameter name="acquisitionErrorCount" type="Long"/>
-            <parameter name="retryable" type="Boolean"><description>The database did not answer: the samples from
-                retryFromIndex on were not stored and are to be sent again.</description></parameter>
-            <parameter name="retryFromIndex" type="Long"/>
-        </out-parameters>
-    </service>
-    <service verb="store" noun="DeviceLogSamples" type="rust" location="moqui_device::inbound::store_samples"
-            authenticate="false" transaction="ignore">
-        <description>Store decoded diagnostic events: ParameterLog for an exact parameterId, otherwise DeviceLog.
-            The device must be the request owner or an alive descendant in its explicit device group hierarchy.
-            Optional logValueKind is numeric, enumeration or message. Events always create logs.
-            This service performs no wire-format decoding and needs no driver installed.</description>
-        <implements service="moqui.device.DeviceServices.store#DeviceSamples"/>
-    </service>
-    <service verb="after" noun="DeviceSamples" authenticate="false" transaction="ignore">
-        <description>Extension hook after a successful sample batch has committed. Attach SECAs here for local
-            after-store callbacks. Hook errors are logged and isolated from the saved data and persistence health.</description>
-        <in-parameters>
-            <parameter name="requestName" required="true"/>
-            <parameter name="samples" type="List"/>
-            <parameter name="results" type="List"/>
-            <parameter name="storedCount" type="Long"/>
-            <parameter name="failedCount" type="Long"/>
-        </in-parameters>
-        <actions/>
-    </service>
-
-    <!-- ========== Trajectory Export ========== -->
-
-    <service verb="get" noun="TrajectoryAxes">
-        <description>
-            Reads the waypoints of a planned trajectory (ApproximatedFunctionSample in sequenceNum order, each with its
-            VectorComponent values) and returns one value list per axis. Axis names follow the vector space of the
-            ApproximatedFunction: X,Y,Z,A,B,C for EngTcpPose6Dof, J1..J6 otherwise; a dimension beyond the sixth is
-            named D and its index. TrajectoryAxisBinding is not used: this is the planned waypoint stream as it is.
-        </description>
-        <in-parameters>
-            <parameter name="approximatedFunctionId" required="true"/>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="axes" type="Map"/>
-            <parameter name="waypointCount" type="Integer"/>
-            <parameter name="vectorSpaceEnumId"/>
-        </out-parameters>
-        <actions>
-            <entity-find entity-name="moqui.math.ApproximatedFunctionSample" list="samples">
-                <econdition field-name="approximatedFunctionId"/>
-                <order-by field-name="sequenceNum"/>
-            </entity-find>
-            <if condition="!samples?.length">
-                <return error="true" message="No ApproximatedFunctionSample found for approximatedFunctionId ${approximatedFunctionId}."/>
-            </if>
-            <entity-find-one entity-name="moqui.math.ApproximatedFunction" value-field="approxFunc">
-                <field-map field-name="approximatedFunctionId"/>
-            </entity-find-one>
-            <set field="vectorSpaceEnumId" from="approxFunc?.vectorSpaceEnumId || null"/>
-            <set field="axisNames" from="vectorSpaceEnumId === 'EngTcpPose6Dof' ? ['X', 'Y', 'Z', 'A', 'B', 'C'] : ['J1', 'J2', 'J3', 'J4', 'J5', 'J6']"/>
-            <set field="axes" from="{}"/>
-            <set field="expectedDimensions" from="null"/>
-            <iterate list="samples" entry="sample">
-                <entity-find entity-name="moqui.math.VectorComponent" list="components">
-                    <econdition field-name="vectorId" from="sample.sampleVectorId"/>
-                    <order-by field-name="dimensionIndex"/>
-                </entity-find>
-                <set field="dimensions" from="Array.from(components).map(c => Number(String(c.dimensionIndex)))"/>
-                <if condition="!components.length || dimensions.some((d, i) => !Number.isInteger(d) || d !== i)">
-                    <return error="true" message="Trajectory ${approximatedFunctionId} has an incomplete or invalid waypoint vector."/>
-                </if>
-                <if condition="expectedDimensions != null &amp;&amp; expectedDimensions !== components.length">
-                    <return error="true" message="Trajectory ${approximatedFunctionId} has inconsistent waypoint dimensions."/>
-                </if>
-                <set field="expectedDimensions" from="components.length"/>
-                <iterate list="components" entry="comp">
-                    <set field="dim" from="parseInt(comp.dimensionIndex, 10)"/>
-                    <set field="axisKey" from="dim &lt; axisNames.length ? axisNames[dim] : 'D' + dim"/>
-                    <if condition="comp.realValue == null || !Number.isFinite(Number(String(comp.realValue)))">
-                        <return error="true" message="Trajectory ${approximatedFunctionId} has a missing or non-finite coordinate."/>
-                    </if>
-                    <!-- a decimal field is a Decimal object in the script: toNumber() reads it -->
-                    <set field="axes[axisKey]" from="(axes[axisKey] || []).concat([(comp.realValue != null &amp;&amp; typeof comp.realValue.toNumber === 'function' ? comp.realValue.toNumber() : Number(comp.realValue))])"/>
-                </iterate>
-            </iterate>
-            <set field="waypointCount" from="samples.length"/>
-        </actions>
-    </service>
-
-    <service verb="export" noun="Trajectory" authenticate="false" transaction="ignore">
-        <description>
-            Publishes a planned trajectory for immediate execution (the ephemeral path; a recipe exported with
-            export#DeviceConfig is the persistent one). The axis values come from
-            get#TrajectoryAxes and go out as one JSON message through run#DeviceRequest: the DeviceRequest is an MQTT
-            write without items (requestTypeEnumId DrtWrite, runServiceName
-            moqui.device.gateway.MqttServices.run#DeviceRequest, brokerUri the broker, query the topic that
-            MqttParameterSub on the PLC subscribes to).
-
-            Message:
-                {"requestName": "ROBOT_ARM_TRAJECTORY_EXPORT", "approximatedFunctionId": "100051",
-                 "waypointCount": 10, "mqttTopic": "moqui/robot/arm1/trajectory",
-                 "axes": {"X": [850.0, 860.0], "Y": [0.0, 20.0]}}
-        </description>
-        <in-parameters>
-            <parameter name="approximatedFunctionId" required="true"/>
-            <parameter name="requestName" required="true"/>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="status"/>
-            <parameter name="errorMessage"/>
-        </out-parameters>
-        <actions>
-            <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="request">
-                <field-map field-name="requestName"/>
-            </entity-find-one>
-            <if condition="!request"><return error="true" message="DeviceRequest ${requestName} not found."/></if>
-            <service-call name="moqui.device.DeviceServices.get#TrajectoryAxes" out-map="trajectory"
-                    in-map="{approximatedFunctionId:approximatedFunctionId}"/>
-            <log level="info" message="Exporting trajectory ${approximatedFunctionId} (${trajectory.waypointCount} waypoints) with request ${requestName}"/>
-            <service-call name="moqui.device.DeviceServices.run#DeviceRequest" out-map="result"
-                    in-map="{requestName:requestName, payload:{requestName:requestName, approximatedFunctionId:approximatedFunctionId,
-                        waypointCount:trajectory.waypointCount, mqttTopic:request.query || '', axes:trajectory.axes}}"/>
-            <set field="status" from="result.status"/>
-            <set field="errorMessage" from="result.errorMessage"/>
-        </actions>
-    </service>
 </services>
