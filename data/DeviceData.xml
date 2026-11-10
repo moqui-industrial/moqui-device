@@ -238,6 +238,7 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.basic.Enumeration description="Vector Index Cluster" enumId="DgtVectorIndexCluster" parentEnumId="DgtComputeCluster" enumTypeId="DeviceType"/>
     <moqui.basic.Enumeration description="Kubernetes Cluster" enumId="DgtKubernetesCluster" parentEnumId="DgtComputeCluster" enumTypeId="DeviceType"/>
 
+
     <moqui.basic.Enumeration description="Networking Group" enumId="DgtNetworking" parentEnumId="DtDeviceGroup" enumTypeId="DeviceType"/>
     <moqui.basic.Enumeration description="Access Layer Group" enumId="DgtAccessLayer" parentEnumId="DgtNetworking" enumTypeId="DeviceType"/>
     <moqui.basic.Enumeration description="Distribution Layer Group" enumId="DgtDistributionLayer" parentEnumId="DgtNetworking" enumTypeId="DeviceType"/>
@@ -271,12 +272,6 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.basic.Enumeration description="Plasma Cutting CNC Control Group" enumId="DgtPlasmaCuttingCnc" parentEnumId="DgtManufacturingCell" enumTypeId="DeviceType"/>
     <moqui.basic.Enumeration description="Laser Cutting CNC Control Group" enumId="DgtLaserCuttingCnc" parentEnumId="DgtManufacturingCell" enumTypeId="DeviceType"/>
     <moqui.basic.Enumeration description="Electric Discharge CNC Control Group" enumId="DgtElectricDischargeCnc" parentEnumId="DgtManufacturingCell" enumTypeId="DeviceType"/>
-
-    <!-- Cyber Security OT - IEC 62443 - group types -->
-    <moqui.basic.Enumeration enumId="DgtSUC" description="IEC 62443 System Under Consideration" parentEnumId="DtDeviceGroup" enumTypeId="DeviceType"/>
-    <moqui.basic.Enumeration enumId="DgtSecurityZone" description="IEC 62443 Security Zone" parentEnumId="DtDeviceGroup" enumTypeId="DeviceType"/>
-    <moqui.basic.Enumeration enumId="DgtSecurityConduit" description="IEC 62443 Security Conduit" parentEnumId="DgtNetworking" enumTypeId="DeviceType"/>
-    <moqui.basic.Enumeration enumId="DtCommunicationChannel" description="IEC 62443 Communication Channel" enumTypeId="DeviceType"/>
 
     <!-- Device Purpose -->
     <moqui.basic.EnumerationType description="Device Purpose" enumTypeId="DevicePurpose"/>
@@ -744,14 +739,6 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.basic.Enumeration enumId="DgmpNetworkAnalyzer" description="Network Analyzer" parentEnumId="DgmpMonitoringDevices" enumTypeId="DeviceGroupMemberPurpose"/>
     <moqui.basic.Enumeration enumId="DgmpNetworkMultimeter" description="Network Multimeter" parentEnumId="DgmpMonitoringDevices" enumTypeId="DeviceGroupMemberPurpose"/>
     <moqui.basic.Enumeration enumId="DgmpEdgeGateway" description="Edge Gateway" enumTypeId="DeviceGroupMemberPurpose"/>
-
-    <!-- Cyber Security OT - IEC 62443 - purpose -->
-    <moqui.basic.Enumeration enumId="DgmpSecurityZone" description="Security Zone" enumTypeId="DeviceGroupMemberPurpose"/>
-    <moqui.basic.Enumeration enumId="DgmpSecurityConduit" description="Security Conduit" enumTypeId="DeviceGroupMemberPurpose"/>
-    <moqui.basic.Enumeration enumId="DgmpZoneAsset" description="Zone Asset" enumTypeId="DeviceGroupMemberPurpose"/>
-    <moqui.basic.Enumeration enumId="DgmpCommunicationChannel" description="Communication Channel" enumTypeId="DeviceGroupMemberPurpose"/>
-    <moqui.basic.Enumeration enumId="DgmpConduitDevice" description="Conduit Implementation Device" enumTypeId="DeviceGroupMemberPurpose"/>
-
     <!-- Device Group Member Status -->
     <moqui.basic.StatusType description="Device Group Member Status" statusTypeId="DeviceGroupMemberStatus"/>
     <moqui.basic.StatusItem description="Down" sequenceNum="1" statusId="DgmsDown" statusTypeId="DeviceGroupMemberStatus"/>
@@ -769,16 +756,27 @@ along with this software (see the LICENSE.md file). If not, see
     <moqui.basic.StatusFlowTransition statusFlowId="ClusterMembership" statusId="DgmsInit" toStatusId="DgmsAlive" transitionName="Run"/>
     <moqui.basic.StatusFlowTransition statusFlowId="ClusterMembership" statusId="DgmsAlive" toStatusId="DgmsDown" transitionName="Down"/>
 
-    <!-- Device Notification Topic -->
-    <moqui.security.user.NotificationTopic topic="Device-${device.deviceName||''}-${device.deviceId}-${typeString}" description="Device ${device.deviceName||''} [${device.deviceId}] ${typeString}"
-            typeString="${typeString}" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="N" emailTemplateId="NOTIFICATION"
-            titleTemplate="Device ${device.deviceName||''} [${device.deviceId||''}] ${typeString} - ${message||'N/A'}"
-            linkTemplate="/qapps/system/Device/Devices/DeviceDetail?deviceId=${device.deviceId}"/>
-    <moqui.security.user.NotificationTopic topic="DeviceGroup-${deviceGroup.groupName||''}-${deviceGroup.deviceId}-${typeString}" description="Device Group ${deviceGroup.groupName||''} [${deviceGroup.deviceId}] ${typeString}"
-            typeString="${typeString}" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="N" emailTemplateId="NOTIFICATION"
-            titleTemplate="Device Group ${deviceGroup.groupName||''} [${deviceGroup.deviceId}] ${typeString} - ${message||'N/A'}"
-            linkTemplate="/qapps/system/Device/DeviceGroups/DeviceGroupDetail?deviceId=${deviceGroup.deviceId}"/>
-    <moqui.security.user.NotificationTopic topic="DeviceRequestResult" description="Device Request Result Notifications"
-            typeString="${typeString}" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="N"
-            titleTemplate="${titleText || message || 'Device request result'}"/>
+    <!-- Device notifications (DeviceServices.send#DeviceNotification): deviceId, deviceName, requestName, eventType,
+        title and text, the Device as the record; in the Notifications inbox. The recipients are the members of the user
+        groups with DEVICE_NOTIFY and the topic's subscribers. The app that shows devices sets the link. -->
+    <moqui.security.UserPermission userPermissionId="DEVICE_NOTIFY" description="Receive the notifications of devices and device requests"/>
+    <moqui.security.UserGroupPermission userGroupId="ADMIN" userPermissionId="DEVICE_NOTIFY" fromDate="0"/>
+    <!-- DeviceServices.receive#GatewayRequestCallback: the result of a device request -->
+    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequest" inboxEnumId="NinNotifications" description="Device request event"
+            typeString="info" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
+            titleTemplate="${title}"/>
+    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequestCompleted" inboxEnumId="NinNotifications" description="Device request completed"
+            typeString="success" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
+            titleTemplate="${title}"/>
+    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequestFailed" inboxEnumId="NinNotifications" description="Device request failed"
+            typeString="danger" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
+            titleTemplate="${title}"/>
+    <!-- DeviceServices.notify#DeviceInboundState and notify#DeviceAcquisitionError: values of a subscription or polling
+        request that are not stored, and their recovery -->
+    <moqui.security.user.NotificationTopic topic="DeviceGatewayInboundFailed" inboxEnumId="NinNotifications" description="Device data not stored"
+            typeString="danger" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
+            titleTemplate="${title}"/>
+    <moqui.security.user.NotificationTopic topic="DeviceGatewayInboundRecovered" inboxEnumId="NinNotifications" description="Device data stored again"
+            typeString="success" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
+            titleTemplate="${title}"/>
 </entity-facade-xml>

@@ -183,11 +183,6 @@ along with this software (see the LICENSE.md file). If not, see
             <!-- NOTE: Design characteristics for a piece of equipment. -->
             <moqui.basic.Enumeration description="Device Specification" enumId="DCntSpecification" enumTypeId="DeviceContentType"/>
 
-            <!-- Machine-readable device descriptions interpreted by protocol drivers. -->
-            <moqui.basic.Enumeration enumId="DCntDeviceDescription" enumTypeId="DeviceContentType" parentEnumId="DCntSpecification" description="Machine-readable Device Description"/>
-            <moqui.basic.Enumeration enumId="DCntGsdml" enumTypeId="DeviceContentType" parentEnumId="DCntDeviceDescription" description="PROFINET GSDML Device Description"/>
-            <moqui.basic.Enumeration enumId="DCntEipEds" enumTypeId="DeviceContentType" parentEnumId="DCntDeviceDescription" description="EtherNet/IP EDS Device Description"/>
-
             <moqui.basic.Enumeration description="Firmware" enumId="DCntFirmware" enumTypeId="DeviceContentType"/>
             <moqui.basic.Enumeration description="Software Application" enumId="DCntSoftwareApplication" enumTypeId="DeviceContentType"/>
             <moqui.basic.Enumeration description="Robot Program" enumId="DCntRobotProgram" enumTypeId="DeviceContentType"/>
@@ -327,7 +322,7 @@ along with this software (see the LICENSE.md file). If not, see
         <relationship type="one" related="moqui.device.Device"/>
         <relationship type="one" related="moqui.basic.GeoPoint" short-alias="geoPoint"/>
         <relationship type="many" related="moqui.device.DeviceGroupMember" short-alias="groups">
-            <key-map field-name="deviceId"/></relationship>
+            <key-map field-name="deviceId" related="memberDeviceId"/></relationship>
         <relationship type="many" related="moqui.device.DeviceContent" short-alias="contents">
             <key-map field-name="deviceId"/></relationship>
         <relationship type="many" related="moqui.device.DeviceConnection" short-alias="connections">
@@ -413,8 +408,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="driverEnumId" type="id" not-null="true"/>
         <field name="transportEnumId" type="id"/>
         <field name="transportConfig" type="text-medium"/>
-        <field name="options" type="text-long"><description>Query-string or JSON options of the driver, for example the
-            usernameEnv, passwordEnv and host-key-fingerprint of an SFTP connection.</description></field>
+        <field name="options" type="text-short"/>
 
         <relationship type="one" related="moqui.device.PhysicalDevice" short-alias="device"/>
         <relationship type="one" title="DeviceConnectionType" related="moqui.basic.Enumeration" short-alias="type">
@@ -452,8 +446,6 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="KNXnet/IP" enumId="DcdKNXnetIP" enumCode="knxnet-ip" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Logix CIP/EIP" enumId="DcdLogixCIPEIP" enumCode="logix" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Opc Ua" enumId="DcdOpcUa" enumCode="opcua" enumTypeId="DeviceConnectionDriver"/>
-            <moqui.basic.Enumeration description="MQTT" enumId="DcdMqtt" enumCode="mqtt" enumTypeId="DeviceConnectionDriver"/>
-            <moqui.basic.Enumeration description="SFTP" enumId="DcdSftp" enumCode="sftp" enumTypeId="DeviceConnectionDriver"/>
             <!-- NOTE: for MTConnect protocol see https://docs.mtconnect.org -->
             <moqui.basic.Enumeration description="MTConnect" enumId="DcdMtConnect" enumCode="mtConnect" enumTypeId="DeviceConnectionDriver"/>
             <!-- Device Connection Transport -->
@@ -507,7 +499,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="retained" type="text-indicator" default="'N'">
             <description>Instructs the broker or Moqui to keep a copy of that request/message after sending it to current subscribers.
                 For broker-managed requests.</description></field>
-        <field name="query" type="text-long">
+        <field name="query" type="text-medium">
             <description>The topic or contiguous address space to query physical items on the device.
                 This field can be overridden by individual item query.
                 The query should indicate the data type.</description></field>
@@ -555,12 +547,11 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="AMQP Broker" enumId="DrrAMQPBroker" parentEnumId="DrrBroker" enumTypeId="DeviceRequestRouter"/>
             <moqui.basic.Enumeration description="STOMP Broker" enumId="DrrSTOMPBroker" parentEnumId="DrrBroker" enumTypeId="DeviceRequestRouter"/>
             <moqui.basic.Enumeration description="Kafka" enumId="DrrKafka" parentEnumId="DrrBroker" enumTypeId="DeviceRequestRouter"/>
+            <moqui.basic.Enumeration description="Moqui Device Gateway (external Camel/Quarkus process)" enumId="DrrMoquiDeviceGateway" enumTypeId="DeviceRequestRouter"/>
         </seed-data>
     </entity>
     <entity entity-name="DeviceRequestItem" package="moqui.device" cache="true">
         <field name="requestName" type="text-short" is-pk="true"/>
-        <field name="parameterId" type="id" is-pk="true">
-            <description>The device parameter or register to request.</description></field>
         <field name="requestItemName" type="text-short">
             <description><![CDATA[Input/Output physical signals/terminals naming rules.
                 For each value of the Parameter entity a physical signals could be generated, according to the following naming convention:
@@ -591,6 +582,8 @@ along with this software (see the LICENSE.md file). If not, see
 
                  ... ]]></description>
         </field>
+        <field name="parameterId" type="id" is-pk="true">
+            <description>The device parameter or register to request.</description></field>
         <field name="sequenceNum" type="number-integer">
             <description>Sequence number with which this item will be processed.</description></field>
         <field name="query" type="text-long">
@@ -898,8 +891,8 @@ along with this software (see the LICENSE.md file). If not, see
     </entity>
 
     <!-- ========== Parameter ========== -->
-    <extend-entity entity-name="Parameter" package="moqui.math" enable-audit-log="update" use="configuration" cache="true" short-alias="parameters">
-        <description>
+    <extend-entity entity-name="Parameter" package="moqui.math" enable-audit-log="update" cache="true">
+        <!--
             Device-side Parameter scope extension.
             A Parameter entity bound to deviceConfigId is a declared recipe/configuration value. It belongs to the reference
             layer and is normally authored by seed data, an engineer, an administrator or an AI-assisted technical process.
@@ -912,7 +905,7 @@ along with this software (see the LICENSE.md file). If not, see
 
             Compliance and drift checks compare configuration-bound Parameter values against device-bound Parameter values
             using DeviceRule tolerance fields and ParameterDef metadata.
-        </description>
+        -->
         <field name="deviceId" type="id"/>
         <field name="deviceConfigId" type="id"/>
 
@@ -1107,11 +1100,11 @@ along with this software (see the LICENSE.md file). If not, see
     </entity>
 
     <!-- ========== Device Trajectory ========== -->
-    <extend-entity entity-name="TrajectoryPointRun" package="moqui.math" use="nontransactional" cache="never" sequence-bank-size="100">
+    <extend-entity entity-name="TrajectoryPointRun" package="moqui.math" cache="never" sequence-bank-size="100">
         <field name="deviceId" type="id" not-null="true"/>
         <relationship type="one" related="moqui.device.Device" short-alias="device"/>
     </extend-entity>
-    <extend-entity entity-name="TrajectoryRun" package="moqui.math" use="nontransactional" cache="never" sequence-bank-size="100">
+    <extend-entity entity-name="TrajectoryRun" package="moqui.math" cache="never" sequence-bank-size="100">
         <field name="deviceId" type="id" not-null="true"/>
         <relationship type="one" related="moqui.device.Device" short-alias="device"/>
     </extend-entity>

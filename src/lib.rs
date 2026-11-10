@@ -12,11 +12,11 @@
  * <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
-//! Native Moqui device services. ONNX inference is an optional build feature.
-#[cfg(feature = "onnx")]
-mod onnx_planner;
-mod onnx_tool;
-mod services;
+//! Native code of moqui-device: the trajectory generator tool of the robot arm planner (ONNX inference is the
+//! optional `onnx` feature), and the device content and sample services.
+mod content;
+mod inbound;
+mod trajectory;
 
 use moqui_core::context::Error;
 use moqui_core::native::{submit_component, NativeComponent, NativeRegistry};
@@ -24,11 +24,9 @@ use moqui_core::native::{submit_component, NativeComponent, NativeRegistry};
 submit_component! { NativeComponent { name: "moqui-device", register } }
 
 fn register(registry: &mut NativeRegistry) -> Result<(), Error> {
-    registry.tool("moqui_device::OnnxToolFactory", || {
-        std::sync::Arc::new(onnx_tool::OnnxToolFactory::default())
+    registry.tool("moqui_device::TrajectoryGeneratorFactory", || {
+        std::sync::Arc::new(trajectory::TrajectoryGeneratorFactory::default())
     })?;
-    registry.service_function(
-        "moqui_device::services::infer_trajectory_waypoints",
-        services::infer_trajectory_waypoints,
-    )
+    registry.service_function("moqui_device::inbound::store_samples", inbound::store_samples)?;
+    registry.service_function("moqui_device::content::transfer_files", content::transfer_files)
 }

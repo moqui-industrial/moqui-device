@@ -11,9 +11,9 @@ Grant of Patent License.
           - DG_EDGE_01      = test DeviceGroup (edge/control cell)
           - VIRTUAL_PLC_01  = test PLC / controller
           - DRV_EDGE_01     = test drive / inverter
-          - GW_EDGE_01      = test edge gateway device
-        The DeviceRequest records run in-process through the protocol services of the
-        moqui-device-gateway component (moqui.device.gateway.*Services.run#DeviceRequest).
+          - GW_EDGE_01      = test moqui-device-gateway instance
+        These IDs are mirrored as closely as possible by the SQL fixtures in
+        moqui-device-gateway/src/test/resources/device-gateway-seed.sql.
     -->
 
     <!-- ========================================================= -->
@@ -442,8 +442,9 @@ Grant of Patent License.
             description="Standard moqui-plc framework parameter subscribe enable flag from ec.gvl"/>
 
     <!-- ========================================================= -->
-    <!-- Optional Mantle telemetry: test/mantle/MantleTestData.xml   -->
+    <!-- Test Measurement Types                                    -->
     <!-- ========================================================= -->
+    <!-- In test/mantle/MantleTestData.xml: the Mantle rows need mr-mantle, which moqui-device does not depend on. -->
 
     <!-- ========================================================= -->
     <!-- Test Devices                                              -->
@@ -831,8 +832,9 @@ Grant of Patent License.
             numericValue="250"/>
 
     <!-- ========================================================= -->
-    <!-- WorkEffort telemetry moved to optional Mantle test file   -->
+    <!-- Test Work Efforts for Measurement telemetry               -->
     <!-- ========================================================= -->
+    <!-- In test/mantle/MantleTestData.xml: the Mantle rows need mr-mantle, which moqui-device does not depend on. -->
 
     <!-- ========================================================= -->
     <!-- Test Device Configs + Config Parameters                   -->
@@ -1067,33 +1069,78 @@ Grant of Patent License.
 
     <moqui.device.DeviceRequest
             requestName="VIRTUAL_PLC_01_ExportProcess"
-            deviceId="VIRTUAL_PLC_01"
+            deviceId="GW_EDGE_01"
             requestTypeEnumId="DrtConfigWrite"
             purposeEnumId="DrpCommissioning"
             requestGroup="TEST_GATEWAY_EXPORT"
             priority="10"
             sequenceNum="10"
-            description="Recipe export of the minimal test PLC rule set, written as files by moqui-device-gateway"
-            runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
-            routerEnumId="DrrDirect"
-            brokerUri="file:target/exported-config/plc"
-            query="TestPlcGatewayRuleSet1"
+            description="Dispatch DeviceConfig export for the minimal test PLC via moqui-device-gateway"
+            routerEnumId="DrrMoquiDeviceGateway"
+            runServiceName="moqui.device.DeviceGatewayServices.export#DeviceConfig"
+            brokerUri="http://localhost:8081?apiKey=change-me-in-production"
             timeout="30000"
             fromDate="2026-06-28 00:00:00"/>
 
-
-
     <moqui.device.DeviceRequest
             requestName="VIRTUAL_PLC_01_SyncParameters"
+            deviceId="GW_EDGE_01"
+            requestTypeEnumId="DrtWrite"
+            purposeEnumId="DrpControl"
+            requestGroup="TEST_GATEWAY_SYNC"
+            priority="10"
+            sequenceNum="20"
+            description="Dispatch live parameter sync for the minimal test PLC via moqui-device-gateway"
+            runServiceName="moqui.device.DeviceGatewayServices.run#GatewayDeviceRequest"
+            onlyChangedParameters="N"
+            routerEnumId="DrrMoquiDeviceGateway"
+            brokerUri="http://localhost:8081?apiKey=change-me-in-production"
+            query="VIRTUAL_PLC_01_GatewayWrite"
+            timeout="30000"
+            fromDate="2026-06-28 00:00:00"/>
+
+    <moqui.device.DeviceRequest
+            requestName="VIRTUAL_PLC_01_TransferContent"
+            deviceId="GW_EDGE_01"
+            requestTypeEnumId="DrtContentTransfer"
+            purposeEnumId="DrpCommissioning"
+            requestGroup="TEST_GATEWAY_TRANSFER"
+            priority="10"
+            sequenceNum="25"
+            description="Dispatch DeviceContent transfer for the minimal test PLC via moqui-device-gateway"
+            runServiceName="moqui.device.DeviceGatewayServices.transfer#DeviceContent"
+            routerEnumId="DrrMoquiDeviceGateway"
+            brokerUri="http://localhost:8081?apiKey=change-me-in-production"
+            query="VIRTUAL_PLC_01_GatewayTransferContent"
+            timeout="30000"
+            fromDate="2026-06-28 00:00:00"/>
+
+    <moqui.device.DeviceRequest
+            requestName="DG_EDGE_01_TransferContent"
+            deviceId="GW_EDGE_01"
+            requestTypeEnumId="DrtContentTransfer"
+            purposeEnumId="DrpCommissioning"
+            requestGroup="TEST_GATEWAY_TRANSFER"
+            priority="10"
+            sequenceNum="26"
+            description="Dispatch DeviceContent transfer for the minimal test device group via moqui-device-gateway"
+            runServiceName="moqui.device.DeviceGatewayServices.transfer#DeviceContent"
+            routerEnumId="DrrMoquiDeviceGateway"
+            brokerUri="http://localhost:8081?apiKey=change-me-in-production"
+            query="DG_EDGE_01_GatewayTransferContent"
+            timeout="30000"
+            fromDate="2026-06-28 00:00:00"/>
+
+    <moqui.device.DeviceRequest
+            requestName="VIRTUAL_PLC_01_GatewayWrite"
             deviceId="VIRTUAL_PLC_01"
             requestTypeEnumId="DrtWrite"
             purposeEnumId="DrpControl"
             requestGroup="TEST_GATEWAY_SYNC"
             priority="10"
             sequenceNum="10"
-            description="MQTT write that publishes current PLC parameter values through moqui-device-gateway"
+            description="Gateway-side MQTT write request that publishes current PLC parameter values"
             onlyChangedParameters="N"
-            runServiceName="moqui.device.gateway.MqttServices.run#DeviceRequest"
             routerEnumId="DrrMQTTBroker"
             brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             query="iot/parameters/out"
@@ -1101,37 +1148,35 @@ Grant of Patent License.
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequest
-            requestName="VIRTUAL_PLC_01_TransferContent"
+            requestName="VIRTUAL_PLC_01_GatewayTransferContent"
             deviceId="VIRTUAL_PLC_01"
             requestTypeEnumId="DrtContentTransfer"
             purposeEnumId="DrpCommissioning"
             requestGroup="TEST_GATEWAY_TRANSFER"
             priority="10"
             sequenceNum="30"
-            description="File transfer of DeviceContent for the minimal test PLC through moqui-device-gateway"
-            runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
+            description="Gateway-side file transfer request for the minimal test PLC"
             routerEnumId="DrrDirect"
             brokerUri="file:target/transferred-content/plc"
             timeout="30000"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequest
-            requestName="DG_EDGE_01_TransferContent"
+            requestName="DG_EDGE_01_GatewayTransferContent"
             deviceId="VIRTUAL_PLC_01"
             requestTypeEnumId="DrtContentTransfer"
             purposeEnumId="DrpCommissioning"
             requestGroup="TEST_GATEWAY_TRANSFER"
             priority="10"
             sequenceNum="31"
-            description="File transfer of DeviceContent for the minimal test device group through moqui-device-gateway"
-            runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
+            description="Gateway-side file transfer request for the minimal test device group routed through its controller"
             routerEnumId="DrrDirect"
             brokerUri="file:target/transferred-content/device-group"
             timeout="30000"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem
-            requestName="VIRTUAL_PLC_01_SyncParameters"
+            requestName="VIRTUAL_PLC_01_GatewayWrite"
             requestItemName="PLC_CYCLE"
             parameterId="TestPlcCycleTimeParam"
             sequenceNum="10"
@@ -1139,7 +1184,7 @@ Grant of Patent License.
             itemTypeEnumId="DritInt"/>
 
     <moqui.device.DeviceRequestItem
-            requestName="VIRTUAL_PLC_01_SyncParameters"
+            requestName="VIRTUAL_PLC_01_GatewayWrite"
             requestItemName="PLC_PROGRAM"
             parameterId="TestPlcProgramParam"
             sequenceNum="20"
@@ -1155,8 +1200,7 @@ Grant of Patent License.
             priority="10"
             sequenceNum="30"
             description="Generic MQTT publish request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.MqttServices.run#DeviceRequest"
-            routerEnumId="DrrMQTTBroker"
+            routerEnumId="DrrMoquiDeviceGateway"
             brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             onlyChangedParameters="N"
             fromDate="2026-06-28 00:00:00"/>
@@ -1180,14 +1224,13 @@ Grant of Patent License.
     <moqui.device.DeviceRequest
             requestName="TestPlcMqttSubscribeReq01"
             deviceId="VIRTUAL_PLC_01"
-            requestTypeEnumId="DrtSubscribe"
+            requestTypeEnumId="DrtCyclic"
             purposeEnumId="DrpControl"
             requestGroup="TEST_GATEWAY_MQTT"
             priority="10"
             sequenceNum="40"
             description="Generic MQTT subscription request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.MqttServices.run#DeviceRequest"
-            routerEnumId="DrrMQTTBroker"
+            routerEnumId="DrrMoquiDeviceGateway"
             brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             pollingInterval="100"
             fromDate="2026-06-28 00:00:00"/>
@@ -1218,8 +1261,7 @@ Grant of Patent License.
             priority="10"
             sequenceNum="50"
             description="Generic MQTT unsubscribe request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.MqttServices.run#DeviceRequest"
-            routerEnumId="DrrMQTTBroker"
+            routerEnumId="DrrMoquiDeviceGateway"
             brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             fromDate="2026-06-28 00:00:00"/>
 
@@ -1241,7 +1283,6 @@ Grant of Patent License.
             priority="10"
             sequenceNum="60"
             description="Generic OPC UA subscription request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.OpcUaServices.run#DeviceRequest"
             routerEnumId="DrrDirect"
             connectionName="TestPlcOpcUaConn01"
             pollingInterval="100"
@@ -1273,7 +1314,6 @@ Grant of Patent License.
             priority="10"
             sequenceNum="70"
             description="Generic OPC UA unsubscribe request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.OpcUaServices.run#DeviceRequest"
             routerEnumId="DrrDirect"
             connectionName="TestPlcOpcUaConn01"
             fromDate="2026-06-28 00:00:00"/>
@@ -1287,7 +1327,6 @@ Grant of Patent License.
             priority="10"
             sequenceNum="80"
             description="Generic OPC UA write request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.OpcUaServices.run#DeviceRequest"
             routerEnumId="DrrDirect"
             connectionName="TestPlcOpcUaConn01"
             onlyChangedParameters="N"
@@ -1310,7 +1349,6 @@ Grant of Patent License.
             priority="10"
             sequenceNum="90"
             description="Generic OPC UA one-shot read request mirroring moqui-device-gateway integration tests"
-            runServiceName="moqui.device.gateway.OpcUaServices.run#DeviceRequest"
             routerEnumId="DrrDirect"
             connectionName="TestPlcOpcUaConn01"
             fromDate="2026-06-28 00:00:00"/>
@@ -1633,64 +1671,8 @@ Grant of Patent License.
             payload="{&quot;status&quot;:&quot;online&quot;,&quot;cpu&quot;:24.6,&quot;latencyMs&quot;:95,&quot;message&quot;:&quot;broker link restored&quot;}"/>
 
     <!-- ========================================================= -->
-    <!-- Measurements moved to optional Mantle test file           -->
+    <!-- Test Measurements                                         -->
     <!-- ========================================================= -->
+    <!-- In test/mantle/MantleTestData.xml: the Mantle rows need mr-mantle, which moqui-device does not depend on. -->
 
-
-    <!-- ========================================================= -->
-    <!-- Redundant PLC pair: the second PLC receives the same files -->
-    <!-- ========================================================= -->
-    <!-- VIRTUAL_PLC_02 is the redundant partner of VIRTUAL_PLC_01. Its export and transfer requests name the requests
-         of VIRTUAL_PLC_01 in parentRequestName: run#DeviceRequest sends them the same files after the primary. -->
-    <moqui.device.Device deviceId="VIRTUAL_PLC_02" parentDeviceId="DG_EDGE_01" deviceTypeEnumId="DtPLC"
-            statusTypeId="DeviceBasicStatus" statusFlowId="DeviceBasicStatusFlow" statusId="DbsStandstill"
-            description="Redundant partner of VIRTUAL_PLC_01" fromDate="2026-06-28 00:00:00"/>
-    <moqui.device.PhysicalDevice deviceId="VIRTUAL_PLC_02" deviceName="Virtual PLC 02" vendorName="OpenPLC"
-            modelName="Soft PLC" softwareApplication="OpenPLC Runtime"/>
-    <moqui.device.DeviceGroupMember deviceId="DG_EDGE_01" memberDeviceId="VIRTUAL_PLC_02" purposeEnumId="DgmpProcessPLC"
-            statusId="DgmsAlive" sequenceNum="15" description="Redundant PLC of the minimal test cell"/>
-    <moqui.device.DeviceRequest requestName="VIRTUAL_PLC_02_ExportProcess" parentRequestName="VIRTUAL_PLC_01_ExportProcess"
-            deviceId="VIRTUAL_PLC_02" requestTypeEnumId="DrtConfigWrite" purposeEnumId="DrpCommissioning"
-            routerEnumId="DrrDirect" runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
-            brokerUri="file:target/exported-config/plc-redundant" timeout="30000" fromDate="2026-06-28 00:00:00"
-            description="Redundant recipe destination: the files of VIRTUAL_PLC_01_ExportProcess"/>
-    <moqui.device.DeviceRequest requestName="VIRTUAL_PLC_02_TransferContent" parentRequestName="VIRTUAL_PLC_01_TransferContent"
-            deviceId="VIRTUAL_PLC_02" requestTypeEnumId="DrtContentTransfer" purposeEnumId="DrpCommissioning"
-            routerEnumId="DrrDirect" runServiceName="moqui.device.gateway.FileServices.run#DeviceRequest"
-            brokerUri="file:target/transferred-content/plc-redundant" timeout="30000" fromDate="2026-06-28 00:00:00"
-            description="Redundant content destination: the content of VIRTUAL_PLC_01_TransferContent"/>
-
-    <!-- ========================================================= -->
-    <!-- Trajectory recipe (the trajectory export seed of the former gateway tests) -->
-    <!-- ========================================================= -->
-    <moqui.math.ApproximatedFunction approximatedFunctionId="TestPlcTrajectory01" interpolationEnumId="AfiPiecewise"
-            purposeEnumId="AfpTrajectory" vectorSpaceEnumId="EuclideanSpace3D" codomainTypeEnumId="AfctVector"
-            parametrizationDegree="1" dataStorageEnumId="AfdsPointTable" name="Test PLC Trajectory"/>
-    <moqui.math.ParametricPath approximatedFunctionId="TestPlcTrajectory01" profileEnumId="PppfTrajectoryProfile"/>
-    <moqui.math.Trajectory approximatedFunctionId="TestPlcTrajectory01"/>
-    <moqui.math.Vector vectorId="TestPlcTrajPt1Vec"/>
-    <moqui.math.Vector vectorId="TestPlcTrajPt2Vec"/>
-    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt1V0" vectorId="TestPlcTrajPt1Vec" dimensionIndex="0" realValue="100.0"/>
-    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt1V1" vectorId="TestPlcTrajPt1Vec" dimensionIndex="1" realValue="200.0"/>
-    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt1V2" vectorId="TestPlcTrajPt1Vec" dimensionIndex="2" realValue="300.0"/>
-    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt2V0" vectorId="TestPlcTrajPt2Vec" dimensionIndex="0" realValue="150.0"/>
-    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt2V1" vectorId="TestPlcTrajPt2Vec" dimensionIndex="1" realValue="250.0"/>
-    <moqui.math.VectorComponent vectorComponentId="TestPlcTrajPt2V2" vectorId="TestPlcTrajPt2Vec" dimensionIndex="2" realValue="350.0"/>
-    <moqui.math.ApproximatedFunctionSample approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt1"
-            sampleTypeEnumId="AfstWaypoint" sampleCode="WP0001" sampleName="Waypoint 1" sequenceNum="1" sampleVectorId="TestPlcTrajPt1Vec"/>
-    <moqui.math.ApproximatedFunctionSample approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt2"
-            sampleTypeEnumId="AfstWaypoint" sampleCode="WP0002" sampleName="Waypoint 2" sequenceNum="2" sampleVectorId="TestPlcTrajPt2Vec"/>
-    <moqui.math.ParametricPathPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt1" tolerance="10.0"/>
-    <moqui.math.ParametricPathPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt2"/>
-    <moqui.math.TrajectoryPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt1"
-            isBreakPoint="N" pointTimeOffsetMillis="500.0"/>
-    <moqui.math.TrajectoryPoint approximatedFunctionId="TestPlcTrajectory01" approximatedFunctionSampleId="TestPlcTrajPt2"
-            isBreakPoint="Y" pointTimeOffsetMillis="1000.0"/>
-    <moqui.device.DeviceConfig deviceConfigId="TestPlcTrajectoryConfig1" configName="Test PLC Trajectory Config"
-            deviceTypeEnumId="DtPLC" approximatedFunctionId="TestPlcTrajectory01"/>
-    <moqui.device.DeviceRuleSet deviceRuleSetId="TestPlcTrajectoryRuleSet1" ruleSetName="TestPlcTrajectoryRuleSet"
-            purposeEnumId="DrspProcess" deviceId="VIRTUAL_PLC_01"/>
-    <moqui.device.DeviceRule deviceRuleId="TestPlcTrajectoryRule010" deviceRuleSetId="TestPlcTrajectoryRuleSet1"
-            deviceConfigId="TestPlcTrajectoryConfig1" deviceId="VIRTUAL_PLC_01" ruleTypeEnumId="DrtApplyConfig"
-            ruleName="Apply Test PLC trajectory config" priority="1"/>
 </entity-facade-xml>

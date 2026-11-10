@@ -2,7 +2,7 @@
 
 This `mr-moqui` branch targets [MR-Moqui master](https://github.com/moqui/mr-moqui).
 Install `moqui-math` with this component; see [MR-Moqui setup](#mr-moqui-branch).
-`mantle-udm` is optional and is needed only for the additional Mantle telemetry test fixture.
+`mr-mantle` is optional and is needed only for the additional Mantle telemetry test fixture.
 
 [![license](http://img.shields.io/badge/license-CC0%201.0%20Universal-blue.svg)](https://github.com/moqui/moqui-device/blob/master/LICENSE.md)
 
@@ -337,52 +337,60 @@ detail; here it is co-primary.
 | `moqui.device.DeviceServices.run#DeviceRequest` | Dispatches a single `DeviceRequest` to its configured implementation service |
 | `moqui.device.DeviceServices.run#DeviceRequestGroup` | Runs all requests in a named group; designed to be called as a scheduled service |
 | `moqui.device.DeviceServices.run#DeviceRequestInternal` | Interface that driver components implement (`moqui-device-gateway` on MR-Moqui, `moqui-plc4j` on Java) |
-| `moqui.device.DeviceServices.send#DeviceNotification` | Sends a Moqui notification for a device event |
-| `moqui.device.DeviceServices.notify#DeviceRequestResult` | Notifies the user of the result of a write, recipe export or content transfer (topic `DeviceRequestResult`) |
-| `moqui.device.DeviceConfigServices.get#DeviceConfigExportFiles` | Renders the recipe of a `DeviceRuleSet` as `name:=value` text files, one per rule priority |
-| `moqui.device.DeviceConfigServices.export#DeviceConfig` | Renders a recipe and sends the files with `run#DeviceRequest` (file or SFTP endpoint) |
-| `moqui.device.TrajectoryPlannerServices.get#TrajectoryAxes` | Reads the waypoints of a planned trajectory as one value list per axis |
-| `moqui.device.TrajectoryPlannerServices.export#Trajectory` | Publishes a planned trajectory as one JSON message with `run#DeviceRequest` (MQTT) |
-| `moqui.device.TrajectoryPlannerServices.call#InferenceEndpoint` | Posts JSON to an inference provider with the key in `X-API-Key` |
-| `moqui.device.TrajectoryPlannerServices.infer#PlannerWaypoints` | The waypoints of a planner mode: linear-demo, native ONNX or the remote provider |
-| `moqui.device.TrajectoryPlannerServices.get#DeviceImage` | The image of a device (DeviceContent) as base64, for an inference provider |
-| `moqui.device.TrajectoryPlannerServices.create#PoseVector` | A Vector with its VectorComponent records |
+| `moqui.device.DeviceServices.send#DeviceNotification` | Notifies the holders of `DEVICE_NOTIFY` about an event of a device |
+| `moqui.device.DeviceServices.receive#GatewayRequestCallback` | Turns the result of a device request into a notification |
+| `moqui.device.DeviceServices.apply#DeviceConfig` | Copies the declared values of a `DeviceConfig` to the parameters of a device |
+| `moqui.device.DeviceServices.get#DeviceConfigExportFiles` | Renders the recipe of a `DeviceRuleSet` as `name:=value` text files, one per rule priority |
+| `moqui.device.DeviceServices.export#DeviceConfig` | Renders a recipe and sends the files with `transfer#DeviceContent` |
+| `moqui.device.DeviceServices.transfer#DeviceContent` | Sends a `DeviceContent` or given files with the implementation of a `DeviceRequest` (file or SFTP endpoint) |
+| `moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` | Plans TCP waypoints with the ONNX model of a `MathModel` and persists the trajectory |
+| `moqui.device.TrajectoryPlannerServices.run#OpenVla` | Sends a device image and an instruction to OpenVLA (`/act`) |
+| `moqui.device.TrajectoryPlannerServices.run#OpenVlaGrounding` | Locates an object in a device image (`/ground`), optionally saved as vectors |
 
-The services are XML Actions. Scripts are left only where XML Actions have no
-element: the CODESYS recipe rendering of `get#DeviceConfigExportFiles`, the REST
-call of `call#InferenceEndpoint`, the notification message of
-`send#DeviceNotification` and the file stream of `save#DeviceContentFile`.
+The services are ported from the Groovy version (branch `main`) with the same
+names and parameters, in the mr-moqui and mr-mantle style: the XML Actions stay
+XML Actions with JavaScript expressions, and the logic of the Groovy scripts is
+in the JavaScript library `service/moqui/device/Devices.js` (notifications,
+`apply#DeviceConfig`, the recipe files), which each service calls with
+`execute(operation, context)` as the Mantle libraries are called. The Groovy
+class `TrajectoryGenerator` of the trajectory planner is the Rust tool
+`TrajectoryGenerator` (`src/trajectory.rs`). [SERVICE-PORT.md](SERVICE-PORT.md)
+lists the differences.
 
-`run#DeviceRequest` calls the service in `DeviceRequest.runServiceName`. With
+`run#DeviceRequest` calls the service in `DeviceRequest.runServiceName` with
+`device`, `request`, `connection`, `requestItemList` and `bulkRequestItemList`,
+as in the Groovy version. With
 [moqui-device-gateway](https://github.com/moqui/moqui-device-gateway) (branch
 `mr-moqui`) installed, that is a protocol service of the gateway, run in the same
-process: `moqui.device.gateway.MqttServices.run#DeviceRequest`, `OpcUaServices`,
-`ModbusServices`, `FileServices` (file and SFTP) or `PlcLogServices`. Besides the
-request items, `run#DeviceRequest` passes `deviceContentId` and `transferFiles`
-(files to send) and `payload` (a message sent as it is), and returns `status`,
-`itemResults`, `subscriptionId`, `transferredFiles` and `errorMessage`.
+process. Retrying a write whose outcome is uncertain is the caller's decision.
 
-For redundant PLCs, a `DeviceRequest` whose `parentRequestName` is a recipe
-export (`DrtConfigWrite`) or content transfer (`DrtContentTransfer`) request of
-the same type is a second destination: after the primary completes,
-`run#DeviceRequest` sends it the same files and reports it in
-`secondaryResults`; its failure does not change the primary result.
-`DeviceTestData.xml` has the pair `VIRTUAL_PLC_01` / `VIRTUAL_PLC_02`.
+### Notifications
 
-### Device content transfer destination
+`send#DeviceNotification` follows the Mantle pattern: the message holds
+`deviceId`, `deviceName`, `requestName`, `eventType`, `title` and `text`, the
+`Device` is the record, and the topic gives the type, the alert, the inbox and
+the title. The recipients are the members of the user groups with the
+permission `DEVICE_NOTIFY` (ADMIN in the seed data), besides the sender, and
+the topic's subscribers. A notice that fails is logged and does not fail the
+caller. The topics are `DeviceGatewayRequest`, `DeviceGatewayRequestCompleted`,
+`DeviceGatewayRequestFailed`, `DeviceGatewayInboundFailed` and
+`DeviceGatewayInboundRecovered`.
 
-A `DrtContentTransfer` request sends a file to the endpoint in its own
-`brokerUri`:
+### Device content transfer
+
+`transfer#DeviceContent` sends a file to the endpoint of a `DrtContentTransfer`
+request:
 
 ```
-moqui.device.DeviceServices.run#DeviceRequest
+moqui.device.DeviceServices.transfer#DeviceContent
     requestName     = VIRTUAL_PLC_01_TransferContent
     deviceContentId = <the DeviceContent to send>
 ```
 
-The gateway reads the source file from `DeviceContent.contentLocation` (the
-content must belong to the device of the request) and writes it to the
-directory in `brokerUri`, for example:
+It reads the source file from `DeviceContent.contentLocation` (the content must
+belong to the device of the request) and passes it as `transferFiles` to the
+implementation of the request, which writes it to the directory in `brokerUri`,
+for example:
 
 - `file:/mnt/cnc-share/programs`
 - `file:/var/lib/plc/recipes`
@@ -390,30 +398,29 @@ directory in `brokerUri`, for example:
   options hold the user and the pinned `host-key-fingerprint`
 
 `DeviceTestData.xml` ships `VIRTUAL_PLC_01_TransferContent` and
-`DG_EDGE_01_TransferContent`, which write to `target/transferred-content/plc`
-and `target/transferred-content/device-group`. The SimpleScreens device screens
-find these requests by name: `{deviceId}_TransferContent`, and likewise
+`DG_EDGE_01_TransferContent`. The SimpleScreens device screens find these
+requests by name: `{deviceId}_TransferContent`, and likewise
 `{deviceId}_ExportProcess` for the recipe export and `{deviceId}_SyncParameters`
 for the parameter write.
 
 ### Recipe export
 
-A `DrtConfigWrite` request with a file or SFTP endpoint exports the recipe of
-the `DeviceRuleSet` in its `query`:
+`export#DeviceConfig` renders the recipe of a `DeviceRuleSet` and sends it with
+`transfer#DeviceContent`, through a `DrtConfigWrite` request with a file or SFTP
+endpoint, as the Camel export route did:
 
 ```
-moqui.device.DeviceConfigServices.export#DeviceConfig
+moqui.device.DeviceServices.export#DeviceConfig
     requestName     = VIRTUAL_PLC_01_ExportProcess
-    deviceRuleSetId = <optional, default: DeviceRequest.query>
+    deviceRuleSetId = <the DeviceRuleSet>
     deviceId        = <optional, only the rules of this device>
 ```
 
 `get#DeviceConfigExportFiles` writes one file per `DeviceRule.priority`, named
 `ruleSetName_pNN.txt`, with one `name:=value` line per `Parameter` of the rule's
 `DeviceConfig` and, when the configuration has a trajectory, the
-`Trajectory.points[i]...` lines of its `TrajectoryPoint` records. Running the
-request alone with `run#DeviceRequest` (in a request group, for example) exports
-the rule set in its `query` the same way.
+`Trajectory.points[i]...` lines of its `TrajectoryPoint` records. The result is
+notified with `receive#GatewayRequestCallback`.
 
 ## Service layer — Python ecosystem via moqui-jep
 
@@ -428,18 +435,20 @@ algorithms and model inference use Rust/JavaScript services or external provider
 
 ## Example service: 6-DOF TCP waypoint planning
 
-`moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` persists
-six-dimensional TCP poses `[X,Y,Z,A,B,C]` in the math model. In this Rust-framework
-branch, default `plannerMode=native` loads ONNX in-process through the optional
-Rust service. `plannerMode=remote` explicitly delegates to `inferenceUrl`;
-`plannerMode=linear-demo` generates ten interpolated poses only when requested.
-These examples do not establish general collision avoidance, kinematic feasibility
-or physical execution by a PLC.
+`moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` runs the
+ONNX model of a `MathModel` (its `MathModelDefContent` of type `MmCntOnnx`) and
+persists the six-dimensional TCP poses `[X,Y,Z,A,B,C]` in the math model. The
+model takes `[tcp_start(6) || tcp_goal(6)]` as a float `[1,12]` input and gives
+N waypoints of six values, flat, in its first output. The inference runs in the
+Moqui process with ONNX Runtime, through the Rust tool `TrajectoryGenerator`; it
+is the optional `onnx` feature of the crate (see
+[Trajectory planning on MR-Moqui](#trajectory-planning-on-mr-moqui)). These
+examples do not establish collision avoidance, kinematic feasibility or physical
+execution by a PLC.
 
-`script/train_robot_arm_trajectory_planner.py` trains and exports the ONNX model;
-the same file runs in Java/DJL on the `main` branch and in Rust/ort here. A trained
-model must match the selected TCP tensor contract. Native and remote inference
-never silently substitute interpolation.
+`script/train_robot_arm_trajectory_planner.py` trains and exports the ONNX model
+`data/ml/trajectory_planner.onnx`; the same file runs with DJL on the `main`
+branch and with ONNX Runtime here.
 
 ### Data modelling
 
@@ -490,7 +499,7 @@ The `MathModel` lifecycle is governed by `MathModelStatusFlow`
 `MathModelRun` record that captures:
 
 - `startTime` / `endDate` — wall-clock span
-- `parameters` — JSON snapshot of start/goal poses, planner mode, ONNX profile and optional obstacle
+- `parameters` — JSON snapshot of the start and goal poses
 - `results` — JSON summary (`approximatedFunctionId`, `waypointCount`)
 - `hasError` / `errors` — error fields updated before propagating an inference failure; normal transaction rollback still applies
 - `approximatedFunctionId` — direct FK to the output trajectory
@@ -551,48 +560,50 @@ machinery.
 
 ### Dispatching the computed trajectory — export#Trajectory
 
+This section describes the Java version, whose data `TrajectoryPlannerData.xml` keeps: `export#Trajectory` was in
+`DeviceGatewayServices.xml`, run by the Camel gateway. On this branch `export#Trajectory` and `get#TrajectoryAxes`
+are in `DeviceServices.xml`, in the section of the services that were not in the Groovy component, and are
+reviewed with the gateway services.
+
 `TrajectoryPlannerData.xml` ships minimal seed data to test the ephemeral dispatch
 path end-to-end:
 
 | Record | Key |
 |---|---|
-| `Device` | `deviceId = ROBOT_ARM_01` |
+| `Device` | `deviceId = moqui-device-gateway1` |
 | `DeviceRequest` | `requestName = ROBOT_ARM_TRAJECTORY_EXPORT` |
 
-The `DeviceRequest` is an MQTT write without items, run by
-`moqui.device.gateway.MqttServices.run#DeviceRequest`: `brokerUri` is the
-broker (`mqtt://localhost:1883`) and `query` the topic
-(`moqui/robot/arm1/trajectory`).
+The `DeviceRequest` points to a local gateway instance (`brokerUri = http://localhost:8081`)
+and carries the MQTT topic in its `query` field (`moqui/robot/arm1/trajectory`).
 
 To dispatch after planning:
 
 ```
-moqui.device.TrajectoryPlannerServices.export#Trajectory
+moqui.device.DeviceGatewayServices.export#Trajectory
     approximatedFunctionId = <output of run#RobotArmTrajectoryPlanner>
     requestName            = ROBOT_ARM_TRAJECTORY_EXPORT
 ```
 
-`get#TrajectoryAxes` reads the `ApproximatedFunctionSample` / `VectorComponent`
-chain directly (no `DeviceRequestItem` or `Parameter` records required), and
-`export#Trajectory` publishes this message with `run#DeviceRequest`:
+The service reads the `ApproximatedFunctionSample` / `VectorComponent` chain directly
+(no `DeviceRequestItem` or `Parameter` records required) and POSTs the following
+JSON to the gateway endpoint `POST /api/trajectory/export`:
 
 ```json
 {
-  "requestName": "ROBOT_ARM_TRAJECTORY_EXPORT",
   "approximatedFunctionId": "100000",
-  "waypointCount": 2,
+  "waypointCount": 10,
   "mqttTopic": "moqui/robot/arm1/trajectory",
   "axes": {
-    "X": [850, 860], "Y": [0, 20], "Z": [300, 310],
-    "A": [0, 0], "B": [0, 0], "C": [0, 0]
+    "J1": [0.10, 0.18, …],
+    "J2": [0.00, 0.05, …],
+    "J3": […], "J4": […], "J5": […], "J6": […]
   }
 }
 ```
 
-`MqttParameterSub` on the PLC receives it and passes each key/value pair to
-`JsonToParametersMapper`, which
-must be specialized to map the declared axes into the controller's trajectory
-buffer. The stock HVAC scalar mapper is not an array/trajectory decoder.
+The gateway publishes this payload to the MQTT topic; `MqttParameterSub` on the
+PLC receives it and passes each key/value pair to `JsonToParametersMapper`, which
+maps `"J1"`…`"J6"` array values to the controller's trajectory buffer.
 
 For the **persistent recipe path** use `export#DeviceConfig` instead: store
 waypoints as `DeviceConfig/Parameter` entries under a `DeviceRuleSet`, then call
@@ -609,8 +620,9 @@ external vision-language-action inference endpoints:
 - `run#OpenVlaGrounding`
 
 Both services resolve an image from `DeviceContent` associated with a `Device`,
-encode it as base64 through the Moqui resource system, and delegate the real HTTP
-call to `call#InferenceEndpoint`, using MR-Moqui's REST client. This keeps the transport contract
+encode it as base64 through the Moqui resource system (`TrajectoryGenerator.imageBase64`), and delegate
+the real HTTP call to `call#OpenVla` or `call#OpenVlaGrounding`, a JSON POST with MR-Moqui's REST client.
+The `apiKey` goes in the query of the endpoint, as in the Groovy version. This keeps the transport contract
 explicit while still letting Moqui validate device/image ownership before any
 remote inference call is made.
 
@@ -697,16 +709,6 @@ durations and process feedback; those remain device-bound parameters. Device
 and parameter names are logical Moqui names without the CODESYS `dev.` prefix;
 the gateway/PLC projection adds that namespace only when emitting IEC paths.
 
-`data/HVACDemoGatewayData.xml` (type `demo`) is the runtime side of the same
-demo on MR-Moqui with moqui-device-gateway: the broker `DeviceConnection`
-`HVAC_DEMO_MQTT` (credentials from `MQTT_USERNAME`/`MQTT_PASSWORD` in the Moqui
-environment) and the PLC log subscription `HVAC_DEMO_PlcLogSubscribe`, restored
-after a start when the Moqui process runs with
-`device_gateway_device_id=HVAC_DEMO_GATEWAY`. It is not
-seed, because the gateway starts every active subscription after a start; load
-it explicitly with
-`./moq load -l runtime/component/moqui-device/data/HVACDemoGatewayData.xml`.
-
 ### HVAC seed-first example
 
 The HVAC file is also a worked example of how to create the declaration layer
@@ -772,6 +774,12 @@ the `main` branch.
 
 ## MR-Moqui branch
 
+For the XML/JavaScript model scope and focused checks, see
+[model migration notes](MIGRATION-STATUS.md). Common orchestration, recipe/content
+export, inbound persistence and notifications are consolidated in `DeviceServices.xml`;
+see the [service ownership and porting map](SERVICE-PORT.md), including the known
+distributed-dispatch limitation and the driver-independent regression command.
+
 Use this branch with [MR-Moqui master](https://github.com/moqui/mr-moqui), plus
 `moqui-math` under `runtime/component`. No Mantle component is required.
 From the framework root:
@@ -787,86 +795,60 @@ no Gradle build or JVM library on this branch. Field communication (MQTT, OPC UA
 Modbus TCP, file and SFTP) is the
 [moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
 component, installed in the same runtime: `run#DeviceRequest` calls its protocol
-services directly, with no HTTP hop and no gateway API key. Inference providers
-are called over HTTP with `call#InferenceEndpoint`; their key is sent in
-`X-API-Key`, payloads are JSON, and a non-success HTTP response stops the
-operation. For the canonical component test suite, follow
+services directly, with no HTTP hop and no gateway API key. OpenVLA is called
+over HTTP with `call#OpenVla` and `call#OpenVlaGrounding`; a non-success HTTP
+response stops the operation. For the canonical component test suite, follow
 [test/README.md](test/README.md), which describes the optional Mantle telemetry setup.
 
 ### Trajectory planning on MR-Moqui
 
-`moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` is the
-invocable Moqui service for inference and trajectory persistence. Its default
-`plannerMode=native` calls the Rust service
-`moqui.device.OnnxServices.infer#TrajectoryWaypoints` **inside the framework
-process**, using `ort` and ONNX Runtime CPU. No HTTP provider is required.
+`run#RobotArmTrajectoryPlanner` runs the ONNX model **inside the framework
+process** with ONNX Runtime, through the Rust tool `TrajectoryGenerator`
+(`src/trajectory.rs`, the port of the Groovy class
+`org.moqui.device.TrajectoryGenerator`, which used DJL). No HTTP provider is
+involved.
 
-ONNX is optional at build time; ordinary device/configuration/gateway use does
-not acquire an inference runtime dependency. To enable it, from MR-Moqui:
+ONNX is optional at build time; ordinary device and configuration use does not
+need an inference runtime. Without the feature the planner fails with an error
+that names it. To enable it, from MR-Moqui:
 
 ```bash
 ./moq build --debug -- --features moqui-device/onnx
 export ORT_DYLIB_PATH=/absolute/path/to/libonnxruntime.so
 ```
 
-Native inference resolves `MathModel` -> `MathModelDefContent` (`MmCntOnnx`) ->
-`contentLocation` through the Moqui resource facade. Use a local or `component://`
-ONNX file; adjacent external tensor data files can be loaded by ONNX Runtime.
-Materialize remote/DB artifacts locally before use.
-
-`moqui_device::OnnxToolFactory` owns the native sessions for the lifetime of the
-framework, following the Moqui ToolFactory pattern. Inference services borrow a
-cached session; they do not load ONNX on every invocation. The cache is keyed by
-model ID and profile, bounded by `onnx.session.cache.max` (default 8), and evicts
-the least recently used entry. Calls using one session serialize access to
-`ort::Session`; different models can execute independently. The first load is
-serialized to avoid duplicate concurrent loads. Shutdown releases cached sessions;
-in-flight calls finish with their borrowed session.
-
-A changed local path, modification time, size, `MathModelDefContent.contentDate`,
-or adjacent `<model>.onnx.data` modification time/size triggers a reload. Publish
-artifacts atomically and advance `contentDate` when replacing external tensors
-with other names or preserving file metadata. An explicit invalidation is also
-available from a server-side action:
+The model is `MathModel` -> `MathModelDefContent` (`MmCntOnnx`) ->
+`contentLocation`, read through the Moqui resource facade. A local or
+`component://` file is loaded once and kept by the tool's factory while its
+size and time, and those of an adjacent `<model>.onnx.data` file, stay the same;
+up to `onnx.session.cache.max` models (default 8, the least recently used
+leaves first). A model at another kind of location is copied to a temporary
+directory with its `.data` file and loaded for the call, as the Groovy version
+did with every model. Calls on one model run one at a time; different models run
+independently. From a server-side script:
 
 ```javascript
-const onnx = ec.factory.getTool("Onnx");
-onnx.invalidate("TrjPlannerMlp6DofV1"); // reload on the next inference
-// onnx.clear();                       // release all cached entries
-// onnx.sessionCount(); onnx.loadCount(); // process-local diagnostic counters
+const generator = ec.getTool("TrajectoryGenerator");
+generator.normalizePoseVector([0, 0, 0, 0, 0, 0], "startPose"); // the checks of the Groovy class
+generator.sessionCount(); generator.loadCount();                 // the models kept, the loads so far
+generator.clear();                                               // load again on the next inference
 ```
 
-This resource lifecycle does not establish a hard real-time cycle budget.
-Missing features, files or invalid inference produce an error; there is no
-implicit fallback to interpolation or another process.
+This does not establish a real-time cycle budget. A missing feature, file or
+library, or an output that is not whole six-value waypoints, is an error; there
+is no fallback to interpolation or to another process.
 
-`onnxProfile=tcp12` is the default and matches the Java/DJL float32 input
-`[1,12]` (start TCP pose followed by goal TCP pose), with an output flattened
-into six-coordinate poses. The isolated example's `corridor13` profile adds a
-calibrated detour clearance input for its obstacle scenario. Existing 12-input
-models reject obstacle observations; they must be extended/retrained to use them.
-
-`plannerMode=remote` remains an explicit alternative: configure `inferenceUrl`
-and optional `apiKey`. Its JSON contract receives `mathModelId`, `startPose`,
-`goalPose` and optional `obstacle`, and returns `waypoints` (at least two arrays
-of six finite numbers). A provider owns its local model configuration.
-`plannerMode=linear-demo` generates ten interpolated TCP poses, records
-`AfiLinearPath` and rejects obstacles. It is not neural inference.
-
-The [isolated Rust ONNX example](examples/onnx-obstacle/README.md) includes real
-inference tests, a small exported network, complete segment clearance checks,
-a simulated GenICam detector boundary, native Moqui calls and an optional loopback
-HTTP provider. It runs without Mantle, camera hardware, a broker or a PLC.
+The crate `examples/onnx-obstacle` is a separate experiment (an obstacle
+corridor model with its own Rust runner); the services of the component do not
+use it.
 
 ### Java/Rust compatibility scope
 
 The domain model and service names are shared with the Java/Groovy component.
-MR-Moqui implements device configuration, content transfer and trajectory
-persistence with JavaScript/XML and native Rust services. Java/DJL and Rust/ort
-both load registered ONNX models in-process using the 12-input TCP contract.
-The new obstacle profile is a separate demonstration, not a replacement for
-an existing trained model. No original Java model binary was available for a
-numerical cross-runtime comparison; the 12-input contract has an exported test fixture.
+MR-Moqui implements the services with XML Actions, JavaScript and the Rust
+`TrajectoryGenerator` tool. Java/DJL and Rust/ONNX Runtime both load the
+registered ONNX model in-process with the 12-input TCP contract; the bundled
+`data/ml/trajectory_planner.onnx` runs in the component tests.
 
 Protocol execution belongs to moqui-device-gateway. On MR-Moqui it is a
 component in the same process; on the Java line (`main`) it is a separate
