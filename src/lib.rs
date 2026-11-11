@@ -15,6 +15,7 @@
 //! Native code of moqui-device: the sample store services, the restart of subscriptions, the file of a DeviceContent,
 //! and the trajectory generator tool of the robot arm planner (ONNX inference is the optional `onnx` feature). The
 //! drivers are not here: a DeviceRequest names the service that runs it.
+
 mod content;
 mod inbound;
 mod restoration;

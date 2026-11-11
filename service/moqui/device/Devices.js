@@ -14,8 +14,7 @@
 
 // The logic of the device services of DeviceServices.xml
 const DEVICE = "moqui.device.Device"
-const one = (entityName, field, value, cache = false) =>
-    ec.entity.find(entityName).condition(field, value).useCache(cache).one()
+const one = (entityName, field, value, cache = false) => ec.entity.find(entityName).condition(field, value).useCache(cache).one()
 const list = find => Array.from(find.list() || [])
 const refuse = message => {
     ec.message.addError(message)
@@ -25,12 +24,17 @@ const refuse = message => {
 // The members of the user groups with the permission, by the dates of the grant and of the membership.
 function permissionUsers(userPermissionId) {
     const groupIds = list(
-        ec.entity.find("moqui.security.UserGroupPermission").condition("userPermissionId", userPermissionId).useCache(true)
+        ec.entity
+            .find("moqui.security.UserGroupPermission")
+            .condition("userPermissionId", userPermissionId)
+            .useCache(true)
             .conditionDate("fromDate", "thruDate", ec.user.nowTimestamp)
     ).map(row => row.userGroupId)
     if (!groupIds.length) return []
     return list(
-        ec.entity.find("moqui.security.UserGroupMember").condition("userGroupId", "in", groupIds)
+        ec.entity
+            .find("moqui.security.UserGroupMember")
+            .condition("userGroupId", "in", groupIds)
             .conditionDate("fromDate", "thruDate", ec.user.nowTimestamp)
     ).map(row => row.userId)
 }
@@ -45,10 +49,12 @@ function notify(p) {
         ec.logger.warn(`Device ${p.deviceId} not found: notification ${p.topic} not sent.`)
         return {}
     }
-    const userIds = [...new Set([...permissionUsers("DEVICE_NOTIFY"), ...Array.from(p.userIds || [])])]
-        .filter(userId => userId && userId !== ec.user.userId)
+    const userIds = [...new Set([...permissionUsers("DEVICE_NOTIFY"), ...Array.from(p.userIds || [])])].filter(
+        userId => userId && userId !== ec.user.userId
+    )
     try {
-        const notification = ec.makeNotificationMessage()
+        const notification = ec
+            .makeNotificationMessage()
             .topic(p.topic)
             .message({
                 deviceId: device.deviceId,
@@ -65,7 +71,9 @@ function notify(p) {
         notification.send()
         return {notificationMessageId: notification.getNotificationMessageId()}
     } catch (error) {
-        ec.logger.error(`Device ${p.deviceId} notification ${p.topic} not sent: ${error && error.message ? error.message : error}`)
+        ec.logger.error(
+            `Device ${p.deviceId} notification ${p.topic} not sent: ${error && error.message ? error.message : error}`
+        )
         return {}
     }
 }
@@ -101,12 +109,21 @@ function applyConfig(p) {
     if (!device) return refuse(`Device not found for deviceId [${deviceId}].`)
 
     if (p.validateDeviceType && deviceConfig.deviceTypeEnumId) {
-        const enumResult = ec.service.sync().name("org.moqui.impl.BasicServices.find#EnumerationByParent")
-            .parameters({parentEnumId: deviceConfig.deviceTypeEnumId, includeParent: true, includeNested: true,
-                orderByField: "description"})
-            .call() || {}
+        const enumResult =
+            ec.service
+                .sync()
+                .name("org.moqui.impl.BasicServices.find#EnumerationByParent")
+                .parameters({
+                    parentEnumId: deviceConfig.deviceTypeEnumId,
+                    includeParent: true,
+                    includeNested: true,
+                    orderByField: "description"
+                })
+                .call() || {}
         if (!Array.from(enumResult.enumIdSet || []).includes(device.deviceTypeEnumId))
-            return refuse(`Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}].`)
+            return refuse(
+                `Device [${deviceId}] with type [${device.deviceTypeEnumId}] is not compatible with DeviceConfig [${deviceConfigId}] type [${deviceConfig.deviceTypeEnumId}].`
+            )
     }
 
     const updatedDeviceFieldList = []
@@ -125,10 +142,14 @@ function applyConfig(p) {
     const targetParameterList = list(ec.entity.find("moqui.math.Parameter").condition("deviceId", deviceId))
     const source = byKey(sourceParameterList)
     if (source.duplicates.length)
-        return refuse(`DeviceConfig [${deviceConfigId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${source.duplicates.join(", ")}. Cannot apply DeviceConfig safely.`)
+        return refuse(
+            `DeviceConfig [${deviceConfigId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${source.duplicates.join(", ")}. Cannot apply DeviceConfig safely.`
+        )
     const target = byKey(targetParameterList)
     if (target.duplicates.length)
-        return refuse(`Device [${deviceId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${target.duplicates.join(", ")}. Cannot apply DeviceConfig safely.`)
+        return refuse(
+            `Device [${deviceId}] has duplicate Parameters for parameterDefId|parameterAlias key(s): ${target.duplicates.join(", ")}. Cannot apply DeviceConfig safely.`
+        )
 
     const fields = ["numericValue", "symbolicValue", "parameterEnumId"].concat(p.copySequenceNum ? ["sequenceNum"] : [])
     const skipped = new Set()
@@ -162,10 +183,21 @@ function applyConfig(p) {
 const nonEmpty = value => (value != null && value !== "" ? String(value) : null)
 // a decimal field is a Decimal object in the script: toNumber() reads it
 const toNumber = value => (value != null && typeof value.toNumber === "function" ? value.toNumber() : Number(value))
-const bufferModes = {PpcmPlcAborting: "0", PpcmPlcBuffered: "1", PpcmPlcBlendingLow: "2", PpcmPlcBlendingPrev: "3",
-    PpcmPlcBlendingNext: "4", PpcmPlcBlendingHigh: "5"}
-const transitionModes = {PpcmPlcTMNone: "0", PpcmPlcTMCornerDist: "1", PpcmPlcTMConstVel: "2", PpcmPlcTMStartVel: "3",
-    PpcmPlcTMMaxVel: "4"}
+const bufferModes = {
+    PpcmPlcAborting: "0",
+    PpcmPlcBuffered: "1",
+    PpcmPlcBlendingLow: "2",
+    PpcmPlcBlendingPrev: "3",
+    PpcmPlcBlendingNext: "4",
+    PpcmPlcBlendingHigh: "5"
+}
+const transitionModes = {
+    PpcmPlcTMNone: "0",
+    PpcmPlcTMCornerDist: "1",
+    PpcmPlcTMConstVel: "2",
+    PpcmPlcTMStartVel: "3",
+    PpcmPlcTMMaxVel: "4"
+}
 
 // The recipe name of a Parameter: the requestItemName of a DeviceRequestItem of the Parameter (the greatest, as the
 // gateway query's max()), else by the DeviceConfig type.
@@ -186,9 +218,11 @@ function recipeName(parameter, def, deviceName, deviceTypeEnumId) {
 function trajectoryLines(functionId, g) {
     g.lines.push(["Trajectory.trajectoryId", String(functionId)])
     for (const point of list(ec.entity.find("moqui.math.TrajectoryPoint").condition("approximatedFunctionId", functionId))) {
-        const sample = ec.entity.find("moqui.math.ApproximatedFunctionSample")
+        const sample = ec.entity
+            .find("moqui.math.ApproximatedFunctionSample")
             .condition("approximatedFunctionId", functionId)
-            .condition("approximatedFunctionSampleId", point.approximatedFunctionSampleId).one()
+            .condition("approximatedFunctionSampleId", point.approximatedFunctionSampleId)
+            .one()
         if (!sample) continue
         const sequenceNum = toNumber(sample.sequenceNum)
         if (!Number.isInteger(sequenceNum) || sequenceNum < 1) {
@@ -198,17 +232,24 @@ function trajectoryLines(functionId, g) {
         g.pointCount++
         const prefix = `Trajectory.points[${sequenceNum - 1}]`
         if (sample.sampleVectorId)
-            for (const component of list(ec.entity.find("moqui.math.VectorComponent").condition("vectorId", sample.sampleVectorId)))
+            for (const component of list(
+                ec.entity.find("moqui.math.VectorComponent").condition("vectorId", sample.sampleVectorId)
+            ))
                 g.lines.push([`${prefix}.pos.v[${component.dimensionIndex}]`, String(component.realValue)])
         g.lines.push([`${prefix}.sequenceNum`, String(sample.sequenceNum)])
-        g.lines.push([`${prefix}.timeOffsetMs`, point.pointTimeOffsetMillis != null ? String(point.pointTimeOffsetMillis) : "0.0"])
+        g.lines.push([
+            `${prefix}.timeOffsetMs`,
+            point.pointTimeOffsetMillis != null ? String(point.pointTimeOffsetMillis) : "0.0"
+        ])
         g.lines.push([`${prefix}.isBreakPoint`, point.isBreakPoint === "Y" ? "TRUE" : "FALSE"])
         g.lines.push([`${prefix}.hasBlendingOverride`, point.blendingEnumId != null ? "TRUE" : "FALSE"])
         g.lines.push([`${prefix}.bufferMode`, bufferModes[point.blendingEnumId] ?? "3"])
         g.lines.push([`${prefix}.transitionMode`, transitionModes[point.blendingEnumId] ?? "0"])
-        const pathPoint = ec.entity.find("moqui.math.ParametricPathPoint")
+        const pathPoint = ec.entity
+            .find("moqui.math.ParametricPathPoint")
             .condition("approximatedFunctionId", functionId)
-            .condition("approximatedFunctionSampleId", point.approximatedFunctionSampleId).one()
+            .condition("approximatedFunctionSampleId", point.approximatedFunctionSampleId)
+            .one()
         g.lines.push([`${prefix}.blendingMode`, pathPoint?.tolerance != null ? String(pathPoint.tolerance) : "0.0"])
     }
     return true
@@ -245,14 +286,21 @@ function configExportFiles(p) {
             const def = one("moqui.math.ParameterDef", "parameterDefId", parameter.parameterDefId)
             if (!def) continue
             g.parameterKeys.add(key)
-            const value = parameter.numericValue != null ? String(parameter.numericValue)
-                : parameter.parameterEnumId != null ? parameter.parameterEnumId : parameter.symbolicValue
+            const value =
+                parameter.numericValue != null
+                    ? String(parameter.numericValue)
+                    : parameter.parameterEnumId != null
+                      ? parameter.parameterEnumId
+                      : parameter.symbolicValue
             g.lines.push([recipeName(parameter, def, deviceName, config.deviceTypeEnumId), value ?? ""])
         }
 
         if (!config.approximatedFunctionId) continue
-        ec.service.sync().name("moqui.device.DeviceServices.get#TrajectoryAxes")
-            .parameters({approximatedFunctionId: config.approximatedFunctionId}).call()
+        ec.service
+            .sync()
+            .name("moqui.device.DeviceServices.get#TrajectoryAxes")
+            .parameters({approximatedFunctionId: config.approximatedFunctionId})
+            .call()
         if (ec.message.hasError()) return {}
         if (!trajectoryLines(config.approximatedFunctionId, g)) return {}
     }
@@ -278,17 +326,26 @@ function configExportFiles(p) {
 // ========== File transfer ==========
 
 // A transfer error is thrown: the caller records it and tells the user.
-const fail = message => { throw new Error(message) }
+const fail = message => {
+    throw new Error(message)
+}
 
 // The options of a transfer destination: a query string or JSON (DeviceConnection.options, the query of the endpoint).
 function destinationOptions(raw, options = {}) {
     const text = raw == null ? "" : String(raw).trim()
     if (!text) return options
-    const pairs = text.startsWith("{") ? Object.entries(JSON.parse(text))
-        : text.replace(/^\?/, "").split("&").filter(pair => pair).map(pair => {
-            const at = pair.indexOf("=")
-            return at < 0 ? [decodeURIComponent(pair), ""] : [decodeURIComponent(pair.slice(0, at)), decodeURIComponent(pair.slice(at + 1))]
-        })
+    const pairs = text.startsWith("{")
+        ? Object.entries(JSON.parse(text))
+        : text
+              .replace(/^\?/, "")
+              .split("&")
+              .filter(pair => pair)
+              .map(pair => {
+                  const at = pair.indexOf("=")
+                  return at < 0
+                      ? [decodeURIComponent(pair), ""]
+                      : [decodeURIComponent(pair.slice(0, at)), decodeURIComponent(pair.slice(at + 1))]
+              })
     for (const [key, value] of pairs) {
         if (key in options) fail("Duplicate transfer option " + key)
         options[key] = value == null ? null : String(value)
@@ -297,12 +354,14 @@ function destinationOptions(raw, options = {}) {
 }
 const fileName = name => {
     const text = name == null ? "" : String(name)
-    if (!text || text === "." || text === ".." || /[\/\\:\u0000-\u001f\u007f]/.test(text)) fail("A transferred file needs a file name, not a path: " + text)
+    if (!text || text === "." || text === ".." || /[\/\\:\u0000-\u001f\u007f]/.test(text))
+        fail("A transferred file needs a file name, not a path: " + text)
     return text
 }
 // A credential option, or the environment variable or property that its ...Env option names.
 function credential(options, name) {
-    const value = options[name], variable = options[name + "Env"]
+    const value = options[name],
+        variable = options[name + "Env"]
     if (value != null && variable != null) fail("Set the " + name + " or the " + name + "Env of the destination, not both")
     if (variable == null) return value
     const found = System.getProperty(variable)
@@ -333,7 +392,9 @@ function destination(spec) {
                 else reference.putText(file.data)
                 return location
             },
-            remove(location) { ec.resource.getLocationReference(location).delete() },
+            remove(location) {
+                ec.resource.getLocationReference(location).delete()
+            },
             close() {}
         }
     }
@@ -361,7 +422,9 @@ function destination(spec) {
             client.put(directory, file.name, file.data, null, true)
             return base + (directory === "/" ? "" : directory) + "/" + file.name
         },
-        remove(location) { client.rm(location.slice(base.length)) },
+        remove(location) {
+            client.rm(location.slice(base.length))
+        },
         close() {
             if (client != null) client.close()
             client = null
@@ -377,7 +440,11 @@ function destination(spec) {
 function transferFiles(p) {
     const files = Array.from(p.files || []).map(file => {
         if (file.bytes == null && file.content == null) fail("The file " + file.name + " has no bytes or content")
-        return {name: fileName(file.name), data: file.bytes != null ? file.bytes : String(file.content), bytes: file.bytes != null}
+        return {
+            name: fileName(file.name),
+            data: file.bytes != null ? file.bytes : String(file.content),
+            bytes: file.bytes != null
+        }
     })
     if (!files.length) fail("No files to transfer")
     if (new Set(files.map(file => file.name)).size !== files.length) fail("A transfer writes each file name once")
@@ -396,7 +463,7 @@ function transferFiles(p) {
             }
         }
     } catch (error) {
-        const reason = String(error && error.message || error)
+        const reason = String((error && error.message) || error)
         const left = []
         for (const done of written.reverse()) {
             if (!done.locations.length) continue
@@ -404,7 +471,11 @@ function transferFiles(p) {
                 done.target.open()
                 try {
                     for (const location of done.locations.reverse()) {
-                        try { done.target.remove(location) } catch (removeError) { left.push(location) }
+                        try {
+                            done.target.remove(location)
+                        } catch (removeError) {
+                            left.push(location)
+                        }
                     }
                 } finally {
                     done.target.close()
@@ -413,8 +484,11 @@ function transferFiles(p) {
                 left.push(...done.locations)
             }
         }
-        fail(left.length ? "The transfer failed (" + reason + ") and these files it had written could not be deleted: " + left.join(", ")
-            : "The transfer failed and the files it had written were deleted: " + reason)
+        fail(
+            left.length
+                ? "The transfer failed (" + reason + ") and these files it had written could not be deleted: " + left.join(", ")
+                : "The transfer failed and the files it had written were deleted: " + reason
+        )
     }
     return {transferredFiles: written.flatMap(done => done.locations)}
 }

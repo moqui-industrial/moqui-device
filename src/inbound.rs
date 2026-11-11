@@ -13,6 +13,7 @@
  */
 
 //! Protocol-neutral sample persistence. Drivers supply logical values, never database connections.
+
 use moqui_core::{
     context::ExecutionContext,
     entity::{exec::PipelineWrites, Condition, EntityFacade, EntityValue},
@@ -32,9 +33,11 @@ fn text<'a>(v: &'a Value, name: &str) -> Option<&'a str> {
         _ => None,
     }
 }
+
 fn entity_text<'a>(v: &'a EntityValue, name: &str) -> Option<&'a str> {
     v.get(name).and_then(Value::as_str).filter(|s| !s.is_empty())
 }
+
 fn number(v: &Value) -> Result<Decimal, Error> {
     match v {
         Value::Decimal(n) => Ok(*n),
@@ -47,6 +50,7 @@ fn number(v: &Value) -> Result<Decimal, Error> {
         _ => Err(Error::new("Sample must be a finite number")),
     }
 }
+
 fn find(ef: &EntityFacade, name: &str, key: &str, id: &str, cache: bool) -> Result<EntityValue, Error> {
     ef.find(name)?
         .eq(key, Value::string(id))
@@ -54,6 +58,7 @@ fn find(ef: &EntityFacade, name: &str, key: &str, id: &str, cache: bool) -> Resu
         .one()?
         .ok_or_else(|| Error::new(format!("{name} record not found: {id}")))
 }
+
 fn contains(ef: &EntityFacade, root: &str, id: &str) -> Result<bool, Error> {
     let mut pending = vec![root.to_string()];
     let mut seen = HashSet::new();
@@ -81,6 +86,7 @@ fn contains(ef: &EntityFacade, root: &str, id: &str) -> Result<bool, Error> {
     }
     Ok(false)
 }
+
 fn kind(ef: &EntityFacade, definition: &EntityValue) -> Result<&'static str, Error> {
     let mut ty = entity_text(definition, "parameterTypeEnumId")
         .ok_or_else(|| Error::new("ParameterDef has no type"))?
@@ -101,6 +107,7 @@ fn kind(ef: &EntityFacade, definition: &EntityValue) -> Result<&'static str, Err
     }
     Err(Error::new("Cyclic parameter type hierarchy"))
 }
+
 fn value_field(value: &Value, kind: &str, width: usize) -> Result<(&'static str, Value), Error> {
     match kind {
         "number" => Ok(("numericValue", Value::Decimal(number(value)?))),
@@ -131,6 +138,7 @@ fn value_field(value: &Value, kind: &str, width: usize) -> Result<(&'static str,
         },
     }
 }
+
 /// When a sample was observed: its sourceTime, else its receivedTime, else now. The flag is true for a sourceTime:
 /// the device stamped the sample, so the time identifies it when a broker delivers it twice.
 fn observed(sample: &Value) -> Result<(Value, bool), Error> {
@@ -159,6 +167,7 @@ fn observed(sample: &Value) -> Result<(Value, bool), Error> {
     }
     Ok(observed.unwrap_or_else(|| (moqui_core::user::now_value(), false)))
 }
+
 /// The sample's own sequenceNum, an integer within signed 64-bit bounds.
 fn sequence_of(sample: &Value) -> Result<Option<Decimal>, Error> {
     let Value::Map(m) = sample else {
@@ -174,6 +183,7 @@ fn sequence_of(sample: &Value) -> Result<Option<Decimal>, Error> {
     }
     Ok(sequence)
 }
+
 /// The bit width of the request item's wire type, for bit-set samples.
 fn item_width(item: Option<&EntityValue>) -> usize {
     match item
@@ -187,6 +197,7 @@ fn item_width(item: Option<&EntityValue>) -> usize {
         _ => 16,
     }
 }
+
 /// The Parameter or ParameterLog field a sample writes, and its typed value.
 fn typed_value(
     sample: &Value,
@@ -204,6 +215,7 @@ fn typed_value(
         _ => Err(Error::new("Invalid logValueKind for this sample")),
     }
 }
+
 /// Whether a current value equals the stored one, within the item's tolerance; always false for an item that allows
 /// duplicates.
 fn unchanged(item: Option<&EntityValue>, kind: &str, old: &Value, typed: &Value) -> Result<bool, Error> {
@@ -231,6 +243,7 @@ fn unchanged(item: Option<&EntityValue>, kind: &str, old: &Value, typed: &Value)
         Err(_) => Ok(false),
     }
 }
+
 /// The next ParameterLog sequenceNum of a parameter, from its last row.
 fn next_log_sequence(ef: &EntityFacade, parameter_id: &str) -> Result<Decimal, Error> {
     ef.find("moqui.math.ParameterLog")?
@@ -247,6 +260,7 @@ fn next_log_sequence(ef: &EntityFacade, parameter_id: &str) -> Result<Decimal, E
         .checked_add(Decimal::ONE)
         .ok_or_else(|| Error::new("Log sequence overflow"))
 }
+
 /// The devices in the scope of the gateway this process is (`device_gateway_device_id`): `None` without a gateway,
 /// an error message for every sample when its identity is not ready.
 fn gateway_scope() -> Result<Result<Option<HashSet<String>>, String>, Error> {
@@ -429,6 +443,7 @@ fn micros(v: &Value) -> Option<i64> {
         _ => None,
     }
 }
+
 fn integer(v: &Value) -> Option<i64> {
     number(v).ok().and_then(|n| i64::try_from(n).ok())
 }
@@ -443,6 +458,7 @@ enum Outcome {
     /// broker redelivers what was stored but not yet acknowledged.
     Duplicate,
 }
+
 impl Outcome {
     fn status(self) -> &'static str {
         match self {
@@ -949,6 +965,7 @@ struct Store {
     duplicates: i64,
     failed: i64,
 }
+
 impl Store {
     fn record(&mut self, request_name: &str, sample: &Value, outcome: Result<Outcome, Error>) {
         let (status, error) = match outcome {
@@ -1000,7 +1017,11 @@ fn finish(
         _ => Vec::new(),
     };
     for error in &acquisition_errors {
-        tracing::error!(request=name, error=%to_plain_string(error), "Device acquisition error; valid samples continue");
+        tracing::error!(
+            request = name,
+            error = %to_plain_string(error),
+            "Device acquisition error; valid samples continue"
+        );
     }
     let Store {
         results,

@@ -21,6 +21,7 @@
 //! each wait twice the previous one up to a maximum, and notified once after a number of failures in a row. A request
 //! stopped with an explicit unsubscribe (record#SubscriptionState) is not started again until it is subscribed again.
 //! The state is per process: each instance restores its own requests.
+
 use moqui_core::{
     context::{Error as FactoryError, ExecutionContext, ExecutionContextFactory},
     native::{Parameters, ServiceInfo, Tool, ToolFactory},
@@ -42,10 +43,12 @@ struct Attempts {
     count: u64,
     next: Option<Instant>,
 }
+
 impl Attempts {
     fn ready(&self, now: Instant) -> bool {
         self.next.is_none_or(|next| next <= now)
     }
+
     /// One more failure: the next attempt waits `delay`, doubled after each failure up to `max_delay`.
     fn record(&mut self, delay: Duration, max_delay: Duration, now: Instant) {
         self.count += 1;
@@ -53,6 +56,7 @@ impl Attempts {
         self.next = Some(now + delay.saturating_mul(factor).min(max_delay));
     }
 }
+
 #[derive(Default)]
 struct Restoration {
     /// The requests to keep running, as the last discovery found them, with their failed starts.
@@ -68,19 +72,23 @@ pub struct DeviceSubscriptionsFactory {
     /// Held by the start#Subscriptions under way.
     running: Mutex<()>,
 }
+
 struct DeviceSubscriptionsTool;
 impl Tool for DeviceSubscriptionsTool {}
 impl ToolFactory for DeviceSubscriptionsFactory {
     fn name(&self) -> &str {
         "DeviceSubscriptions"
     }
+
     fn init(&self, _: &Arc<ExecutionContextFactory>) -> Result<(), FactoryError> {
         Ok(())
     }
+
     fn get_instance(&self, _: &[Value]) -> Result<Arc<dyn Tool>, FactoryError> {
         Ok(Arc::new(DeviceSubscriptionsTool))
     }
 }
+
 fn factory(ec: &ExecutionContext) -> Result<Arc<DeviceSubscriptionsFactory>, Error> {
     ec.factory()
         .get_tool_factory_typed::<DeviceSubscriptionsFactory>("DeviceSubscriptions")
@@ -94,6 +102,7 @@ fn text(params: &Parameters, key: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
         .map(String::from)
 }
+
 fn integer(params: &Parameters, key: &str, default: u64, min: u64, max: u64) -> Result<u64, Error> {
     let n = match params.get(key) {
         None | Some(Value::Null) => default,
@@ -106,6 +115,7 @@ fn integer(params: &Parameters, key: &str, default: u64, min: u64, max: u64) -> 
     }
     Ok(n)
 }
+
 /// A service call in its own transaction; an error it records in the message facade is an error here.
 fn isolated(ec: &ExecutionContext, service: &str, params: &Parameters) -> Result<Parameters, Error> {
     let mark = ec.message().error_mark();
@@ -125,6 +135,7 @@ fn isolated(ec: &ExecutionContext, service: &str, params: &Parameters) -> Result
         Err(Error::new(errors.join("; ")))
     }
 }
+
 fn list(values: impl IntoIterator<Item = String>) -> Value {
     Value::List(values.into_iter().map(Value::string).collect())
 }
@@ -210,7 +221,7 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
                 Ok(found) => found.get("message").map(to_plain_string).unwrap_or_default(),
                 Err(error) => error.to_string(),
             };
-            tracing::warn!(error=%message, "Subscription discovery failed; the requests found last are restored");
+            tracing::warn!(error = %message, "Subscription discovery failed; the requests found last are restored");
             Some(message)
         }
     };
@@ -245,7 +256,7 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
             "unchanged" => *attempts = Attempts::default(),
             "active" | "completed" => {
                 if attempts.count > 0 {
-                    tracing::info!(request=%name, failed_attempts=attempts.count, "Subscription started again");
+                    tracing::info!(request = %name, failed_attempts = attempts.count, "Subscription started again");
                 }
                 *attempts = Attempts::default();
                 started.push(name);
@@ -254,7 +265,12 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
                 attempts.record(delay, max_delay, Instant::now());
                 let count = attempts.count;
                 drop(state);
-                tracing::warn!(request=%name, attempt=count, error=%error, "Subscription start failed; it is tried again later");
+                tracing::warn!(
+                    request = %name,
+                    attempt = count,
+                    error = %error,
+                    "Subscription start failed; it is tried again later"
+                );
                 // Notified once per failure cycle; the attempts go on.
                 if count == notify_after {
                     let _ = isolated(
