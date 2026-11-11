@@ -478,8 +478,7 @@ content must belong to the device of the request. The destination is its
   destination, are `host-key-fingerprint` (`SHA256:...`, required), `username`
   and `password` or `private-key-file`; `usernameEnv` and `passwordEnv` name an
   environment variable instead. Read the fingerprint with
-  `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`. `DeviceConnection.options`
-  holds 63 characters, so the fingerprint usually goes in the query.
+  `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`.
 
 `DeviceTestData.xml` ships `VIRTUAL_PLC_01_TransferContent` and
 `DG_EDGE_01_TransferContent`. The SimpleScreens device screens find these

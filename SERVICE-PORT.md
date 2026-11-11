@@ -59,7 +59,10 @@ XML; defaults and notification templates use JavaScript expressions. What differ
   trajectory recipe of the Camel gateway's export tests.
 - The notification topics have fixed names (the Groovy keys had expressions) and
   the permission `DEVICE_NOTIFY`.
-- The driver enumeration adds `DcdMqtt`, `DcdFile`, `DcdSftp` and `DcdEtherCAT`.
+- The driver enumeration adds `DcdMqtt`, `DcdFile`, `DcdSftp` and `DcdEtherCAT`; the content types add the
+  machine-readable device descriptions `DCntGsdml` (PROFINET) and `DCntEipEds` (EtherNet/IP);
+  `DeviceConnection.options` and `DeviceRequest.query` are long text, so the options of an SFTP connection fit;
+  the router `DrrMoquiDeviceGateway` of the Camel gateway is removed.
 - Not on this branch: the IEC 62443 data and `HVACDemoGatewayData.xml`.
 
 ## Migration Map
