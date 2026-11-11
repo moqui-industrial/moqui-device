@@ -446,6 +446,7 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="KNXnet/IP" enumId="DcdKNXnetIP" enumCode="knxnet-ip" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Logix CIP/EIP" enumId="DcdLogixCIPEIP" enumCode="logix" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="Opc Ua" enumId="DcdOpcUa" enumCode="opcua" enumTypeId="DeviceConnectionDriver"/>
+            <moqui.basic.Enumeration description="EtherCAT" enumId="DcdEtherCAT" enumCode="ethercat" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="MQTT" enumId="DcdMqtt" enumCode="mqtt" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="File" enumId="DcdFile" enumCode="file" enumTypeId="DeviceConnectionDriver"/>
             <moqui.basic.Enumeration description="SFTP" enumId="DcdSftp" enumCode="sftp" enumTypeId="DeviceConnectionDriver"/>
@@ -496,7 +497,9 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="timeout" type="number-integer">
             <description>The maximum time in milliseconds to wait before timeout.</description></field>
         <field name="pollingInterval" type="number-integer">
-            <description>Cyclical polling interval for direct subscription request.</description></field>
+            <description>Milliseconds. A DrtRead with a pollingInterval polls: it reads again at every interval until a
+                DrtUnsubscribe, for protocols that cannot subscribe (Modbus) or by choice (OPC UA). A DrtCyclic
+                subscription is sampled at this interval.</description></field>
         <field name="qos" type="number-integer">
             <description>Request or message Quality of Service QoS. For broker-managed requests.</description></field>
         <field name="retained" type="text-indicator" default="'N'">
@@ -524,7 +527,7 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.EnumerationType description="Device Request Type" enumTypeId="DeviceRequestType"/>
             <moqui.basic.Enumeration description="Write Request" enumId="DrtWrite" enumTypeId="DeviceRequestType"/>
             <moqui.basic.Enumeration description="Config/Recipe Write Request" enumId="DrtConfigWrite" parentEnumId="DrtWrite" enumTypeId="DeviceRequestType"/>
-            <moqui.basic.Enumeration description="Read Request" enumId="DrtRead" enumTypeId="DeviceRequestType"/>
+            <moqui.basic.Enumeration description="Read Request (polling with a pollingInterval)" enumId="DrtRead" enumTypeId="DeviceRequestType"/>
             <moqui.basic.Enumeration description="Subscribe Request" enumId="DrtSubscribe" enumTypeId="DeviceRequestType"/>
             <moqui.basic.Enumeration description="Event Subscription Request" enumId="DrtEvent" parentEnumId="DrtSubscribe" enumTypeId="DeviceRequestType"/>
             <moqui.basic.Enumeration description="State Change Subscription Request" enumId="DrtStateChange" parentEnumId="DrtSubscribe" enumTypeId="DeviceRequestType"/>

@@ -186,8 +186,9 @@ along with this software (see the LICENSE.md file). If not, see
                 connection:connection,
                 bulkRequestItemList:bulkRequestItemList, requestItemList:requestItemList, payload:payload}"
                 out-map="context" disable-authz="true" transaction="ignore"/>
-            <!-- An explicit unsubscribe stops the restart of the subscription; a started one resumes it. -->
-            <if condition="['DrtSubscribe', 'DrtEvent', 'DrtStateChange', 'DrtCyclic', 'DrtUnsubscribe'].includes(request.requestTypeEnumId)">
+            <!-- An explicit unsubscribe stops the restart of the subscription or polling; a started one resumes it. -->
+            <if condition="['DrtSubscribe', 'DrtEvent', 'DrtStateChange', 'DrtCyclic', 'DrtUnsubscribe'].includes(request.requestTypeEnumId)
+                    || (request.requestTypeEnumId === 'DrtRead' &amp;&amp; request.pollingInterval)">
                 <service-call name="moqui.device.DeviceAcquisitionServices.record#SubscriptionState"
                         in-map="{requestName:requestName, requestTypeEnumId:request.requestTypeEnumId,
                             parentRequestName:request.parentRequestName, status:status}"/>

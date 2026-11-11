@@ -89,8 +89,8 @@ along with this software (see the LICENSE.md file). If not, see
 
     <service verb="get" noun="StartupSubscriptions" authenticate="false">
         <description>
-            The subscriptions a gateway starts: the active (fromDate, thruDate) DeviceRequest records of type
-            DrtSubscribe, DrtEvent, DrtStateChange or DrtCyclic whose device is a
+            The subscriptions and polling a gateway starts: the active (fromDate, thruDate) DeviceRequest records of
+            type DrtSubscribe, DrtEvent, DrtStateChange or DrtCyclic, or DrtRead with a pollingInterval, whose device is a
             controller in the scope of the gateway (get#GatewayScope); ordered by priority, sequenceNum, requestName.
         </description>
         <in-parameters>
@@ -112,11 +112,13 @@ along with this software (see the LICENSE.md file). If not, see
             <if condition="!ready"><return/></if>
             <entity-find entity-name="moqui.device.DeviceRequest" list="requestList">
                 <econdition field-name="deviceId" operator="in" from="scope.controllerDeviceIds"/>
-                <econdition field-name="requestTypeEnumId" operator="in" from="['DrtSubscribe', 'DrtEvent', 'DrtStateChange', 'DrtCyclic']"/>
+                <econdition field-name="requestTypeEnumId" operator="in" from="['DrtSubscribe', 'DrtEvent', 'DrtStateChange', 'DrtCyclic', 'DrtRead']"/>
                 <date-filter/>
             </entity-find>
+            <!-- a DrtRead without pollingInterval is a single read -->
+            <set field="requestList" from="Array.from(requestList).filter(r => r.requestTypeEnumId !== 'DrtRead' || r.pollingInterval)"/>
             <!-- a request without priority or sequenceNum sorts last -->
-            <set field="requestNames" from="Array.from(requestList).sort((a, b) => {
+            <set field="requestNames" from="requestList.sort((a, b) => {
                     const key = value => value == null ? 999999 : (typeof value.toNumber === 'function' ? value.toNumber() : Number(value));
                     return (key(a.priority) - key(b.priority)) || (key(a.sequenceNum) - key(b.sequenceNum))
                         || (a.requestName &lt; b.requestName ? -1 : (a.requestName > b.requestName ? 1 : 0));

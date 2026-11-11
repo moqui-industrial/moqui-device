@@ -351,8 +351,8 @@ The services are in three files, plus the planner:
 | `DeviceServices.transfer#DeviceContent` | Writes the file of a `DeviceContent` to a `file:` or `sftp://` destination |
 | `DeviceServices.export#Trajectory` | Publishes the waypoints of a planned trajectory as one MQTT message, through `run#DeviceRequest` |
 | `DeviceAcquisitionServices.store#Samples`, `store#LogSamples` | Store the values a driver read or received in `Parameter`, `ParameterLog` or `DeviceLog` |
-| `DeviceAcquisitionServices.start#Subscriptions` | Keeps the subscriptions of this gateway running, after a restart and after a fault |
-| `DeviceAcquisitionServices.get#GatewayScope`, `get#StartupSubscriptions` | The devices this gateway serves and the subscriptions of their controllers |
+| `DeviceAcquisitionServices.start#Subscriptions` | Keeps the subscriptions and polling of this gateway running, after a restart and after a fault |
+| `DeviceAcquisitionServices.get#GatewayScope`, `get#StartupSubscriptions` | The devices this gateway serves and the subscriptions and polling of their controllers |
 | `TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` | Plans TCP waypoints with the ONNX model of a `MathModel` and persists the trajectory |
 | `TrajectoryPlannerServices.run#OpenVla`, `run#OpenVlaGrounding` | Send a device image and an instruction to OpenVLA; locate an object, optionally saved as vectors |
 
@@ -376,7 +376,7 @@ DeviceServices.run#DeviceRequest(requestName)              loads request, device
          ├─ a read: values ──────────────────────────────► DeviceAcquisitionServices.store#Samples
          └─ a subscription: values, later, from the driver ► DeviceAcquisitionServices.store#Samples / store#LogSamples
                                                               └─ after#Samples (SECAs); notify#InboundState on long failures
-  └─ a subscription request: DeviceAcquisitionServices.record#SubscriptionState
+  └─ a subscription, polling or unsubscribe: DeviceAcquisitionServices.record#SubscriptionState
 
 ServiceJob start_DeviceGatewaySubscriptions (every minute)
   └─ DeviceAcquisitionServices.start#Subscriptions
@@ -395,10 +395,27 @@ own data, and calls back the store services of this component with what it reads
 The persistence (the role of `Plc4jUtil.createOrUpdateBulk`) is here. Retrying a
 write whose outcome is uncertain is the caller's decision.
 
-### Values and subscriptions
+### Values, polling and subscriptions
+
+A request acquires values in one of three ways, by its `requestTypeEnumId`:
+
+| Request | Acquisition |
+|---|---|
+| `DrtRead` | One read, when it is run: from a screen, a job or an event |
+| `DrtRead` with `pollingInterval` | Polling: the driver reads every `pollingInterval` milliseconds until a `DrtUnsubscribe`. For protocols that cannot subscribe (Modbus), and the usual acquisition on OPC UA |
+| `DrtStateChange`, `DrtCyclic`, `DrtEvent`, `DrtSubscribe` | A subscription: the device sends the values on a change, every `pollingInterval`, or as events (the subscription types of PLC4X; `DrtSubscribe` is the default of the protocol). MQTT is only subscribed: a `DrtRead` or a `DrtCyclic` on MQTT is an error |
+
+A polling cycle is no service call and no scheduled job: the driver reads in its
+own task and hands the values to `store#Samples` in batches. The framework needs no
+high-frequency scheduler for it.
 
 `DrpLogging` requests write `ParameterLog` rows; the others update the current
-`Parameter` values, writing only the last value of each parameter of a batch.
+`Parameter` values, writing only the last value of each parameter of a batch. A
+current value equal to the stored one (within the `tolerance` of its request item)
+is not written. The comparison uses the `Parameter` of the entity cache, so a
+polling cycle whose values did not change reads no Parameter from the database; only
+the Parameters that change are read again, locked, and written. The cache is
+cleared by every write through the Entity Engine, which is enough on one node.
 `store#LogSamples` stores PLC log events: an event with a `source` becomes a
 `ParameterLog` of that Parameter, an event without one a `DeviceLog`. Use
 `after#Samples` for failure-isolated after-store SECAs.
@@ -411,8 +428,8 @@ write whose outcome is uncertain is the caller's decision.
 
 MR-Moqui has no startup hook, so the service job `start_DeviceGatewaySubscriptions`
 calls `start#Subscriptions` every minute. Each run asks `run#DeviceRequest` for
-every active `DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` request
-of the controllers in the scope of `device_gateway_device_id`: one that runs
+every active `DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` request,
+and every `DrtRead` with a `pollingInterval`, of the controllers in the scope of `device_gateway_device_id`: one that runs
 answers `unchanged`, one that does not (after a restart, or when its connection
 was lost) is started. A failure is tried again after a delay, up to a budget, then
 notified. A request stopped by an explicit `DrtUnsubscribe` stays stopped until it
@@ -840,14 +857,15 @@ the `main` branch.
 
 ## MR-Moqui branch
 
-For the XML/JavaScript model scope and focused checks, see
-[model migration notes](MIGRATION-STATUS.md). The services are described above
-(see [Services](#services)) and in the [service ownership and porting map](SERVICE-PORT.md).
+The services are described above (see [Services](#services)); the differences
+from the Groovy version, in the model and in the services, are in
+[SERVICE-PORT.md](SERVICE-PORT.md).
 
 Use this branch with [MR-Moqui master](https://github.com/moqui/mr-moqui), plus
 `moqui-math` under `runtime/component`. Install
 [moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
-(branch `mr-moqui`) too to run requests on MQTT, OPC UA or Modbus TCP devices; it
+(branch `mr-moqui`) too to run requests on MQTT, OPC UA, Modbus TCP, EtherNet/IP or
+EtherCAT devices; it
 depends on this component. No Mantle component is required.
 From the framework root:
 
@@ -859,7 +877,7 @@ From the framework root:
 
 MR-Moqui runs the component's JavaScript/XML services and its Rust crate; there is
 no Gradle build or JVM library on this branch. Field communication (MQTT, OPC UA,
-Modbus TCP, later EtherNet/IP, PROFINET, EtherCAT, BACnet) runs on the drivers of
+Modbus TCP, EtherNet/IP, EtherCAT; later PROFINET, BACnet) runs on the drivers of
 moqui-device-gateway in the same process, with no HTTP hop and no gateway API key;
 files and SFTP use the framework's resource facade and `SftpClient`. OpenVLA is called
 over HTTP with `call#OpenVla` and `call#OpenVlaGrounding`; a non-success HTTP

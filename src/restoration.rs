@@ -84,7 +84,11 @@ fn factory(ec: &ExecutionContext) -> Result<Arc<DeviceSubscriptionsFactory>, Err
 }
 
 fn text(params: &Parameters, key: &str) -> Option<String> {
-    params.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from)
+    params
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 fn integer(params: &Parameters, key: &str, default: u64, min: u64, max: u64) -> Result<u64, Error> {
     let n = match params.get(key) {
@@ -138,7 +142,10 @@ pub fn record(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) -
                 state.stopped.insert(parent);
             }
         }
-        Some("DrtSubscribe" | "DrtEvent" | "DrtStateChange" | "DrtCyclic") if matches!(status.as_str(), "active" | "unchanged") => {
+        // A DrtRead is active only while it polls: a single read completes.
+        Some("DrtSubscribe" | "DrtEvent" | "DrtStateChange" | "DrtCyclic" | "DrtRead")
+            if matches!(status.as_str(), "active" | "unchanged") =>
+        {
             state.stopped.remove(&name);
         }
         _ => {}
@@ -178,7 +185,10 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
             "moqui.device.DeviceAcquisitionServices.get#StartupSubscriptions",
             &Parameters::new(),
         );
-        let mut state = factory.state.lock().map_err(|_| Error::new("Subscription state lock poisoned"))?;
+        let mut state = factory
+            .state
+            .lock()
+            .map_err(|_| Error::new("Subscription state lock poisoned"))?;
         match discovered {
             Ok(found) if found.get("ready") == Some(&Value::Bool(true)) => {
                 if let Some(Value::List(names)) = found.get("requestNames") {
@@ -198,7 +208,10 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
         }
     }
     let candidates = {
-        let state = factory.state.lock().map_err(|_| Error::new("Subscription state lock poisoned"))?;
+        let state = factory
+            .state
+            .lock()
+            .map_err(|_| Error::new("Subscription state lock poisoned"))?;
         state
             .requests
             .iter()
@@ -219,7 +232,10 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_owned();
-        let mut state = factory.state.lock().map_err(|_| Error::new("Subscription state lock poisoned"))?;
+        let mut state = factory
+            .state
+            .lock()
+            .map_err(|_| Error::new("Subscription state lock poisoned"))?;
         let Some(attempts) = state.requests.get_mut(&name) else {
             continue; // stopped meanwhile
         };
@@ -251,7 +267,10 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
             }
         }
     }
-    let state = factory.state.lock().map_err(|_| Error::new("Subscription state lock poisoned"))?;
+    let state = factory
+        .state
+        .lock()
+        .map_err(|_| Error::new("Subscription state lock poisoned"))?;
     let waiting = |exhausted: bool| {
         list(
             state

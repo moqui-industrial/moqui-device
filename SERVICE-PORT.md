@@ -1,4 +1,4 @@
-# Common Device Services
+# Port from the Groovy Version
 
 ## Ownership
 
@@ -39,6 +39,28 @@ conventions of PLC4X; its data set the `runServiceName` of the fieldbus requests
 and it hands what it reads to `DeviceAcquisitionServices.store#Samples`. Its Rust
 facade stays usable without Moqui, for example by a future RuSTy host in
 moqui-plc. This reuse does not establish hard-real-time or safety guarantees.
+
+## Model
+
+The entities, view-entities and data restart from the Groovy version (`main`,
+`0b03e51`): the same entity and field names and the same seed, demo and test
+rows; no table, field or primary key is removed. Entity definitions and data stay
+XML; defaults and notification templates use JavaScript expressions. What differs:
+
+- `PhysicalDevice.groups` joins `deviceId` to `DeviceGroupMember.memberDeviceId`.
+- The `Parameter` and trajectory-run extensions leave out the attributes the
+  MR-Moqui schema does not take (`use`, `short-alias`); an extension is documented
+  with an XML comment where the schema permits no description.
+- `TrajectoryPlannerData.xml`: the key of `MathModelDefContent` is
+  `mathModelDefContentId`, as moqui-math defines it.
+- `DeviceTestData.xml` is `type="test"`; its Mantle rows (WorkEffort,
+  MeasurementType, Measurement) are in `test/mantle/MantleTestData.xml`, since
+  moqui-device does not depend on Mantle. `TrajectoryRecipeTestData.xml` holds the
+  trajectory recipe of the Camel gateway's export tests.
+- The notification topics have fixed names (the Groovy keys had expressions) and
+  the permission `DEVICE_NOTIFY`.
+- The driver enumeration adds `DcdMqtt`, `DcdFile`, `DcdSftp` and `DcdEtherCAT`.
+- Not on this branch: the IEC 62443 data and `HVACDemoGatewayData.xml`.
 
 ## Migration Map
 
@@ -81,8 +103,10 @@ Data changes: the routing requests are removed, and the requests that did the
 work take the names the device screens look for (`{deviceId}_SyncParameters`,
 `{deviceId}_TransferContent`); the export requests (`{deviceId}_ExportProcess`)
 belong to the device; `ROBOT_ARM_TRAJECTORY_EXPORT` has the broker as `brokerUri`
-and a timeout in milliseconds; the driver enumeration has `DcdMqtt`, `DcdFile` and
-`DcdSftp`.
+and a timeout in milliseconds; the driver enumeration has `DcdMqtt`, `DcdFile`,
+`DcdSftp` and `DcdEtherCAT`. Polling is a `DrtRead` with a `pollingInterval`;
+`DrtCyclic` is a subscription sampled by the device, which MQTT does not have, so
+the MQTT test requests that were `DrtCyclic` are `DrtSubscribe`.
 
 `TrajectoryPlannerServices.xml` keeps the services of the Groovy version with their
 names and parameters:
@@ -113,7 +137,9 @@ The crate `examples/onnx-obstacle` is a separate experiment and is unchanged.
   an onlyChanged write by `EntityAuditLog` since `DeviceRequest.lastUpdatedStamp`,
   and calls `runServiceName`. It does not read files, render recipes, retry, store
   read samples, notify or check a gateway scope: those belong to the implementation
-  or to the caller. Retrying an uncertain write is the caller's decision.
+  or to the caller. Retrying an uncertain write is the caller's decision. For a
+  subscription, a polling `DrtRead` or an unsubscribe it calls
+  `record#SubscriptionState`, so that `start#Subscriptions` restores what should run.
 - One correction to the Groovy version: when every item of an onlyChanged write is
   unchanged and there is no bulk item, the request stops, even when it has a query.
   The Groovy version went on in that case, so an unchanged write still reached the
@@ -141,7 +167,11 @@ The crate `examples/onnx-obstacle` is a separate experiment and is unchanged.
   one, so a bad row cannot roll back valid ones. When the database does not
   answer, `retryable` and `retryFromIndex` tell the caller what to send again.
   A logging sample with the device time or the sequenceNum of a stored row is
-  a `duplicate`, so a broker redelivery adds no row.
+  a `duplicate`, so a broker redelivery adds no row. A current value is compared
+  with the `Parameter` of the entity cache, so an unchanged value of a polling
+  cycle costs no database read; only the Parameters that change are read again,
+  locked, and written. This holds on one node, since the Entity Engine clears
+  the cache on every write.
 - Recipe export preserves selectors, value precedence, names, priority files,
   trajectory/blending rows and ordering from the original SQL. Deduplication
   includes the target, so one shared DeviceConfig can supply multiple devices.
@@ -157,7 +187,8 @@ and acquisition notices inside `run#DeviceRequest`, and `notify#DeviceRequestRes
 ## Verification And Remaining Boundary
 
 Build from mr-moqui with `./moq build --debug -j 4` and run the component specs
-with `./moq test moqui-device`; it needs no driver component. Inference, provider
+with `./moq test moqui-device`; it needs no driver component. Check the model and
+data with `moqui check runtime/component/moqui-device/entity runtime/component/moqui-device/data`. Inference, provider
 and SFTP cases are opt-in (see `test/README.md`). The requests on the drivers,
 with local Modbus, OPC UA and MQTT peers, and the acceptance runs (broker loss,
 database outage, restart) are those of moqui-device-gateway.

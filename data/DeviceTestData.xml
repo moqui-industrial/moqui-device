@@ -1176,7 +1176,7 @@ Grant of Patent License.
     <moqui.device.DeviceRequest
             requestName="TestPlcMqttSubscribeReq01"
             deviceId="VIRTUAL_PLC_01"
-            requestTypeEnumId="DrtCyclic"
+            requestTypeEnumId="DrtSubscribe"
             purposeEnumId="DrpControl"
             requestGroup="TEST_GATEWAY_MQTT"
             priority="10"
@@ -1184,7 +1184,6 @@ Grant of Patent License.
             description="Generic MQTT subscription request mirroring moqui-device-gateway integration tests"
             routerEnumId="DrrMQTTBroker"
             brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
-            pollingInterval="100"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem
@@ -1316,7 +1315,7 @@ Grant of Patent License.
     <moqui.device.DeviceRequest
             requestName="VIRTUAL_PLC_01_LiveParametersMqttSub"
             deviceId="VIRTUAL_PLC_01"
-            requestTypeEnumId="DrtCyclic"
+            requestTypeEnumId="DrtSubscribe"
             purposeEnumId="DrpMonitoring"
             requestGroup="TEST_FRAMEWORK_MQTT"
             priority="10"
@@ -1324,7 +1323,6 @@ Grant of Patent License.
             description="Standard live-parameter MQTT request for moqui-plc MqttParameterSub"
             routerEnumId="DrrBroker"
             brokerUri="paho-mqtt5:virtual_plc_live?brokerUrl=tcp://localhost:1883"
-            pollingInterval="100"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem
@@ -1338,7 +1336,7 @@ Grant of Patent License.
     <moqui.device.DeviceRequest
             requestName="VIRTUAL_PLC_01_FrameworkStatusRead"
             deviceId="VIRTUAL_PLC_01"
-            requestTypeEnumId="DrtCyclic"
+            requestTypeEnumId="DrtSubscribe"
             purposeEnumId="DrpStatusMonitoring"
             requestGroup="TEST_FRAMEWORK_MQTT"
             priority="10"
@@ -1346,7 +1344,6 @@ Grant of Patent License.
             description="Standard moqui-plc framework status subscription"
             routerEnumId="DrrBroker"
             brokerUri="paho-mqtt5:framework_status?brokerUrl=tcp://localhost:1883"
-            pollingInterval="100"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem requestName="VIRTUAL_PLC_01_FrameworkStatusRead" parameterId="FwFaultParam" sequenceNum="10" requestItemName="fault" query="fault" itemTypeEnumId="DritBool"/>

@@ -439,12 +439,16 @@ struct Planner<'a> {
     /// Device-stamped DeviceLog rows with their own sequenceNum, by (deviceId, observedDate, sequenceNum).
     device_logs: HashSet<(String, i64, i64)>,
     creates: Vec<EntityValue>,
-    updated: Vec<String>,
+    /// The current values that change, with the fields planned for each, in the order planned.
+    updated: Vec<(String, Vec<&'static str>)>,
 }
 
 impl<'a> Planner<'a> {
-    /// The rows a chunk needs, in a few statements: its Parameters (locked for current values), and the log rows that
-    /// could already hold its samples.
+    /// The rows a chunk needs, in a few statements: its Parameters, and the log rows that could already hold its
+    /// samples. The Parameters come from the entity cache (`Parameter` is `cache="true"`): a polling request asks for
+    /// the same parameters at every cycle, so an unchanged value is skipped without a database read. Only the
+    /// Parameters that change are read again, locked, by [`Self::write`]. The cache is right for one node, since the
+    /// Entity Engine clears it on every write; a cache another node does not clear would leave a change unwritten.
     fn load(&mut self, samples: &[Value], times: &[Result<(Value, bool), Error>]) -> Result<(), Error> {
         let mut ids = Vec::new();
         let mut log_dates = Vec::new();
@@ -492,8 +496,7 @@ impl<'a> Planner<'a> {
             for parameter in ef
                 .find("moqui.math.Parameter")?
                 .condition(Condition::is_in("parameterId", ids.clone()))
-                .use_cache(false)
-                .for_update(!self.logging)
+                .use_cache(true)
                 .list()?
                 .iter()
             {
@@ -715,23 +718,47 @@ impl<'a> Planner<'a> {
             }
             // Only the last value of a parameter is written: a current value keeps no history.
             parameter.set(field, typed);
-            if !self.updated.iter().any(|u| u == id) {
-                self.updated.push(id.to_string());
+            match self.updated.iter_mut().find(|(u, _)| u == id) {
+                Some((_, fields)) if !fields.contains(&field) => fields.push(field),
+                Some(_) => {}
+                None => self.updated.push((id.to_string(), vec![field])),
             }
         }
         Ok(Outcome::Stored)
     }
 
-    /// Send the planned writes without waiting for each result.
+    /// Lock the Parameters whose current value changes, set the planned fields on them, and send the writes without
+    /// waiting for each result.
     fn write(&self) -> Result<(), Error> {
+        let mut locked = HashMap::new();
+        if !self.updated.is_empty() {
+            let ids = self.updated.iter().map(|(id, _)| Value::string(id)).collect();
+            for row in self
+                .ef
+                .find("moqui.math.Parameter")?
+                .condition(Condition::is_in("parameterId", ids))
+                .use_cache(false)
+                .for_update(true)
+                .list()?
+                .iter()
+            {
+                if let Some(id) = entity_text(row, "parameterId") {
+                    locked.insert(id.to_string(), row.clone());
+                }
+            }
+        }
         let _pipeline = PipelineWrites::enter();
         for value in &self.creates {
             value.create(self.ef)?;
         }
-        for id in &self.updated {
-            if let Some(parameter) = self.parameters.get(id) {
-                parameter.update(self.ef)?;
+        for (id, fields) in &self.updated {
+            let (Some(planned), Some(mut row)) = (self.parameters.get(id), locked.remove(id)) else {
+                return Err(Error::new("moqui.math.Parameter record not found"));
+            };
+            for field in fields {
+                row.set(*field, planned.get(field).cloned().unwrap_or(Value::Null));
             }
+            row.update(self.ef)?;
         }
         Ok(())
     }
@@ -981,8 +1008,11 @@ fn finish(
         ]);
         let mark = ec.message().error_mark();
         let _ = transactions.run(TransactionAttribute::ForceNew, None, || {
-            moqui_core::service::sync("moqui.device.DeviceAcquisitionServices.notify#AcquisitionError", &report)
-                .map_err(|e| Error::new(e.to_string()))
+            moqui_core::service::sync(
+                "moqui.device.DeviceAcquisitionServices.notify#AcquisitionError",
+                &report,
+            )
+            .map_err(|e| Error::new(e.to_string()))
         });
         ec.message().take_errors_since(mark);
     }
