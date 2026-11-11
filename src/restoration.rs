@@ -12,14 +12,15 @@
  * <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
-//! The restart of subscriptions after a fault or a restart, independent of the driver that runs them.
+//! The restart of subscriptions and polling after a fault or a restart, independent of the driver that runs them.
 //!
 //! moqui.device.DeviceAcquisitionServices.start#Subscriptions, called by a ServiceJob, asks run#DeviceRequest for every
-//! subscription of the controllers in the scope of this gateway (get#StartupSubscriptions). The implementation of a
-//! request answers `unchanged` for a subscription that is running, starts one that is not (after a restart, or when
-//! its connection was lost), or fails; a failure is tried again after a delay, up to a budget, and then notified.
-//! A subscription stopped with an explicit unsubscribe (record#SubscriptionState) is not started again until it is
-//! subscribed again. The state is per process: each instance restores its own subscriptions.
+//! subscription and polling read of the controllers in the scope of this gateway (get#StartupSubscriptions, discovered
+//! once per process). The implementation of a request answers `unchanged` for one that is running, starts one that is
+//! not (after a restart, or when its connection was lost), or fails; a failure is tried again after a delay, up to
+//! `maxAttempts`, and then notified, after which the request waits for a restart of the process or a new subscribe.
+//! A request stopped with an explicit unsubscribe (record#SubscriptionState) is not started again until it is
+//! subscribed again. The state is per process: each instance restores its own requests.
 use moqui_core::{
     context::{Error as FactoryError, ExecutionContext, ExecutionContextFactory},
     native::{Parameters, ServiceInfo, Tool, ToolFactory},
@@ -125,8 +126,9 @@ fn list(values: impl IntoIterator<Item = String>) -> Value {
     Value::List(values.into_iter().map(Value::string).collect())
 }
 
-/// moqui.device.DeviceAcquisitionServices.record#SubscriptionState, called by run#DeviceRequest after a subscription
-/// request: an explicit unsubscribe stops the restoration of its parent, an active subscription resumes it.
+/// moqui.device.DeviceAcquisitionServices.record#SubscriptionState, called by run#DeviceRequest after a subscription,
+/// polling or unsubscribe request: an explicit unsubscribe stops the restoration of its parent, an active
+/// subscription or polling resumes it.
 pub fn record(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) -> Result<Parameters, Error> {
     let name = text(params, "requestName").ok_or_else(|| Error::new("requestName is required"))?;
     let status = text(params, "status").unwrap_or_default();

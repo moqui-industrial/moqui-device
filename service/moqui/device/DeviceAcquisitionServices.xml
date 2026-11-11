@@ -129,14 +129,14 @@ along with this software (see the LICENSE.md file). If not, see
     <service verb="start" noun="Subscriptions" type="rust" location="moqui_device::restoration::start"
             authenticate="false" transaction="ignore">
         <description>
-            Keeps the subscriptions of this gateway (get#StartupSubscriptions) running, whatever their driver: after a
-            start, and after a fault. On every call it asks DeviceServices.run#DeviceRequest for each of them; the
-            implementation answers unchanged for one that is running and starts one that is not. A failure is tried
-            again after retryDelayMillis; the scheduled job calls it every minute and no service thread sleeps between
-            attempts. maxAttempts is the total of a
-            failure cycle, not a new budget on every call; raising it allows more attempts after exhaustion. An explicit
-            unsubscribe stops the restoration of that request. The property device_gateway_restore_subscriptions=false
-            turns it off for this instance.
+            Keeps the subscriptions and polling reads of this gateway (get#StartupSubscriptions, discovered on the first
+            successful call of the process) running, whatever their driver: after a start, and after a fault. On every
+            call it asks DeviceServices.run#DeviceRequest for each of them; the implementation answers unchanged for one
+            that is running and starts one that is not. A failure is tried again after retryDelayMillis; the scheduled
+            job calls it every minute and no service thread sleeps between attempts. maxAttempts is the total of a
+            failure cycle, not a new budget on every call: an exhausted request waits for a restart of the process, a
+            new subscribe, or a call with a higher maxAttempts. An explicit unsubscribe stops the restoration of that
+            request. The property device_gateway_restore_subscriptions=false turns it off for this instance.
         </description>
         <in-parameters>
             <parameter name="maxAttempts" type="Integer" default="3"/>
@@ -154,9 +154,9 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
     <service verb="record" noun="SubscriptionState" type="rust" location="moqui_device::restoration::record"
             authenticate="false" transaction="ignore">
-        <description>Called by DeviceServices.run#DeviceRequest after a subscription request: a completed DrtUnsubscribe
-            stops the restart of parentRequestName by start#Subscriptions, an active or unchanged subscription resumes
-            it.</description>
+        <description>Called by DeviceServices.run#DeviceRequest after a subscription, polling or unsubscribe request: a
+            completed DrtUnsubscribe stops the restart of parentRequestName by start#Subscriptions, an active or
+            unchanged subscription or polling resumes it.</description>
         <in-parameters>
             <parameter name="requestName" required="true"/>
             <parameter name="requestTypeEnumId"/>

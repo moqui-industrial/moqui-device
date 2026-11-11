@@ -402,7 +402,7 @@ A request acquires values in one of three ways, by its `requestTypeEnumId`:
 | Request | Acquisition |
 |---|---|
 | `DrtRead` | One read, when it is run: from a screen, a job or an event |
-| `DrtRead` with `pollingInterval` | Polling: the driver reads every `pollingInterval` milliseconds until a `DrtUnsubscribe`. For protocols that cannot subscribe (Modbus), and the usual acquisition on OPC UA |
+| `DrtRead` with `pollingInterval` | Polling: the driver reads every `pollingInterval` milliseconds until a `DrtUnsubscribe`. For protocols that cannot subscribe (Modbus TCP, EtherNet/IP, EtherCAT), and the usual acquisition on OPC UA |
 | `DrtStateChange`, `DrtCyclic`, `DrtEvent`, `DrtSubscribe` | A subscription: the device sends the values on a change, every `pollingInterval`, or as events (the subscription types of PLC4X; `DrtSubscribe` is the default of the protocol). MQTT is only subscribed: a `DrtRead` or a `DrtCyclic` on MQTT is an error |
 
 A polling cycle is no service call and no scheduled job: the driver reads in its
