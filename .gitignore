@@ -54,3 +54,6 @@ Desktop.ini
 
 # Python bytecode
 __pycache__/
+
+# OPC UA PKI created by test runs
+/runtime/

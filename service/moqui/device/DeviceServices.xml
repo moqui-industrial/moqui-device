@@ -207,9 +207,9 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <!-- ========== Recipe Export and Device Content Transfer ========== -->
-    <!-- Only mr-moqui moves files: a recipe extracted from DeviceRuleSet/DeviceRule/DeviceConfig/Parameter, or a CNC
+    <!-- A recipe extracted from DeviceRuleSet/DeviceRule/DeviceConfig/Parameter, or a CNC
          program, G-Code or firmware of a DeviceContent, is written to the device through the resource facade (file:)
-         or the framework's SftpClient (sftp://), with transferFiles of Devices.js. No driver is involved. -->
+         or the framework's SftpClient (sftp://), with transferFiles of Devices.js. -->
 
     <service verb="get" noun="DeviceConfigExportFiles">
         <description>
