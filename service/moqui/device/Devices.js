@@ -251,7 +251,7 @@ function configExportFiles(p) {
         }
 
         if (!config.approximatedFunctionId) continue
-        ec.service.sync().name("moqui.device.DeviceGatewayServices.get#TrajectoryAxes")
+        ec.service.sync().name("moqui.device.DeviceServices.get#TrajectoryAxes")
             .parameters({approximatedFunctionId: config.approximatedFunctionId}).call()
         if (ec.message.hasError()) return {}
         if (!trajectoryLines(config.approximatedFunctionId, g)) return {}

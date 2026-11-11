@@ -68,10 +68,8 @@ its absence is unrelated to model/schema validation.
 ## Next Boundary
 
 The services are in this component; see [the service porting map](SERVICE-PORT.md).
-The model changes for them are one driver enumeration (`DcdMqtt`, so that
-`run#DeviceRequest` can choose the MQTT driver from `DeviceConnection.driverEnumId`)
-and, in `TrajectoryPlannerData.xml`, the broker and a millisecond timeout on
-`ROBOT_ARM_TRAJECTORY_EXPORT`. moqui-device-gateway is a Rust driver library in
-the same process, not a remote process; its facade must also support a future
-RuSTy host without Moqui. The service tests do not certify protocol libraries or
-the PLC runtime.
+The model changes for them are three driver enumerations (`DcdMqtt`, `DcdFile`,
+`DcdSftp`) and, in `TrajectoryPlannerData.xml`, the broker and a millisecond
+timeout on `ROBOT_ARM_TRAJECTORY_EXPORT`. The drivers are moqui-device-gateway, a
+separate component that depends on this one, as moqui-plc4j did. The service tests
+do not certify protocol libraries or the PLC runtime.

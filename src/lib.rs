@@ -12,14 +12,11 @@
  * <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
-//! Native code of moqui-device: the fieldbus services on the drivers of moqui-device-gateway, the sample store and
-//! subscription restoration, the device content and sample services, and the trajectory generator tool of the robot
-//! arm planner (ONNX inference is the optional `onnx` feature).
+//! Native code of moqui-device: the sample store services, the restart of subscriptions, the file of a DeviceContent,
+//! and the trajectory generator tool of the robot arm planner (ONNX inference is the optional `onnx` feature). The
+//! drivers are not here: a DeviceRequest names the service that runs it.
 mod content;
-mod fieldbus;
-mod fieldbus_store;
 mod inbound;
-mod notifier;
 mod restoration;
 mod trajectory;
 
@@ -32,13 +29,11 @@ fn register(registry: &mut NativeRegistry) -> Result<(), Error> {
     registry.tool("moqui_device::TrajectoryGeneratorFactory", || {
         std::sync::Arc::new(trajectory::TrajectoryGeneratorFactory::default())
     })?;
-    registry.tool("moqui_device::DeviceSampleStoreFactory", || {
-        std::sync::Arc::new(fieldbus_store::DeviceSampleStoreFactory::default())
+    registry.tool("moqui_device::DeviceSubscriptionsFactory", || {
+        std::sync::Arc::new(restoration::DeviceSubscriptionsFactory::default())
     })?;
-    registry.service_function("moqui_device::fieldbus::run_fieldbus_request", fieldbus::run_fieldbus_request)?;
-    registry.service_function("moqui_device::fieldbus::run_plc_log_request", fieldbus::run_plc_log_request)?;
-    registry.service_function("moqui_device::fieldbus::subscription_state", fieldbus::subscription_state)?;
     registry.service_function("moqui_device::restoration::start", restoration::start)?;
+    registry.service_function("moqui_device::restoration::record", restoration::record)?;
     registry.service_function("moqui_device::inbound::store_samples", inbound::store_samples)?;
     registry.service_function("moqui_device::content::transfer_files", content::transfer_files)
 }

@@ -759,30 +759,20 @@ along with this software (see the LICENSE.md file). If not, see
     <!-- Device notifications (DeviceServices.send#DeviceNotification): deviceId, deviceName, requestName, eventType,
         title and text, the Device as the record; in the Notifications inbox. The recipients are the members of the user
         groups with DEVICE_NOTIFY and the topic's subscribers. The app that shows devices sets the link. -->
-    <moqui.security.UserPermission userPermissionId="DEVICE_NOTIFY" description="Receive the notifications of devices and device requests"/>
+    <moqui.security.UserPermission userPermissionId="DEVICE_NOTIFY" description="Receive the notifications of devices"/>
     <moqui.security.UserGroupPermission userGroupId="ADMIN" userPermissionId="DEVICE_NOTIFY" fromDate="0"/>
-    <!-- DeviceServices.receive#GatewayRequestCallback: the result of a device request -->
-    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequest" inboxEnumId="NinNotifications" description="Device request event"
-            typeString="info" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
-            titleTemplate="${title}"/>
-    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequestCompleted" inboxEnumId="NinNotifications" description="Device request completed"
-            typeString="success" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
-            titleTemplate="${title}"/>
-    <moqui.security.user.NotificationTopic topic="DeviceGatewayRequestFailed" inboxEnumId="NinNotifications" description="Device request failed"
-            typeString="danger" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
-            titleTemplate="${title}"/>
-    <!-- FieldbusServices.notify#InboundState and notify#AcquisitionError: values of a subscription or polling
+    <!-- DeviceAcquisitionServices.notify#InboundState and notify#AcquisitionError: values of a subscription or polling
         request that are not stored, and their recovery -->
-    <moqui.security.user.NotificationTopic topic="DeviceGatewayInboundFailed" inboxEnumId="NinNotifications" description="Device data not stored"
+    <moqui.security.user.NotificationTopic topic="DeviceInboundFailed" inboxEnumId="NinNotifications" description="Device data not stored"
             typeString="danger" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
             titleTemplate="${title}"/>
-    <moqui.security.user.NotificationTopic topic="DeviceGatewayInboundRecovered" inboxEnumId="NinNotifications" description="Device data stored again"
+    <moqui.security.user.NotificationTopic topic="DeviceInboundRecovered" inboxEnumId="NinNotifications" description="Device data stored again"
             typeString="success" showAlert="Y" persistOnSend="Y" receiveNotifications="Y" isPrivate="Y" emailTemplateId="NOTIFICATION"
             titleTemplate="${title}"/>
     <!-- Starts the fieldbus subscriptions of this gateway after a start and restarts those that lost their connection;
-         see moqui.device.FieldbusServices.start#Subscriptions. localOnly: each instance runs its own. -->
+         see moqui.device.DeviceAcquisitionServices.start#Subscriptions. localOnly: each instance runs its own. -->
     <moqui.service.job.ServiceJob jobName="start_DeviceGatewaySubscriptions"
             description="Start the device gateway subscriptions (after a start, and those that lost their connection)"
-            serviceName="moqui.device.FieldbusServices.start#Subscriptions"
+            serviceName="moqui.device.DeviceAcquisitionServices.start#Subscriptions"
             cronExpression="0 * * * * ?" localOnly="Y" paused="N"/>
 </entity-facade-xml>

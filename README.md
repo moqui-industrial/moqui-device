@@ -332,97 +332,92 @@ detail; here it is co-primary.
 
 ## Services
 
+The services are in three files, plus the planner:
+
+| File | Content |
+|---|---|
+| `DeviceServices.xml` | The Groovy services; the recipe export, the file transfer and the trajectory export |
+| `DeviceAcquisitionServices.xml` | The gateway scope, the restart of subscriptions, the storage of the values a driver read or received, and its notices |
+| `TrajectoryPlannerServices.xml` | The robot arm planner and OpenVLA |
+
 | Service | Description |
 |---|---|
-| `moqui.device.DeviceServices.run#DeviceRequest` | Runs a single `DeviceRequest` with its `runServiceName`, else on the driver of its connection |
-| `moqui.device.DeviceServices.run#DeviceRequestGroup` | Runs all requests in a named group; designed to be called as a scheduled service |
-| `moqui.device.DeviceServices.run#DeviceRequestInternal` | Interface that driver components implement (`moqui-device-gateway` on MR-Moqui, `moqui-plc4j` on Java) |
-| `moqui.device.DeviceServices.send#DeviceNotification` | Notifies the holders of `DEVICE_NOTIFY` about an event of a device |
-| `moqui.device.DeviceServices.receive#GatewayRequestCallback` | Turns the result of a device request into a notification |
-| `moqui.device.DeviceServices.apply#DeviceConfig` | Copies the declared values of a `DeviceConfig` to the parameters of a device |
-| `moqui.device.FieldbusServices.run#FieldbusRequest` | Runs a request on the MQTT, OPC UA or Modbus TCP driver of moqui-device-gateway |
-| `moqui.device.FieldbusServices.run#PlcLogRequest` | Subscribes to the log events of a moqui-plc PLC over MQTT |
-| `moqui.device.FieldbusServices.start#Subscriptions` | Starts the subscriptions of this gateway and restarts those that lost their connection |
-| `moqui.device.FieldbusServices.store#Samples`, `store#LogSamples` | Store the values a driver read or received |
-| `moqui.device.DeviceGatewayServices.run#GatewayDeviceRequest` | Runs the request named in the `query` of a routing request |
-| `moqui.device.DeviceGatewayServices.export#DeviceConfig` | Renders the recipe of a `DeviceRuleSet` (`get#DeviceConfigExportFiles`) and writes the files to the device |
-| `moqui.device.DeviceGatewayServices.transfer#DeviceContent` | Writes the file of a `DeviceContent` to a `file:` or `sftp://` destination |
-| `moqui.device.DeviceGatewayServices.export#Trajectory` | Publishes the waypoints of a planned trajectory as one MQTT message |
-| `moqui.device.DeviceGatewayServices.receive#GatewayNotification` | Tells the users of an inbound error or recovery |
-| `moqui.device.TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` | Plans TCP waypoints with the ONNX model of a `MathModel` and persists the trajectory |
-| `moqui.device.TrajectoryPlannerServices.run#OpenVla` | Sends a device image and an instruction to OpenVLA (`/act`) |
-| `moqui.device.TrajectoryPlannerServices.run#OpenVlaGrounding` | Locates an object in a device image (`/ground`), optionally saved as vectors |
+| `DeviceServices.run#DeviceRequest` | Runs a `DeviceRequest` with the service in its `runServiceName` |
+| `DeviceServices.run#DeviceRequestGroup` | Runs all requests in a named group; designed to be called as a scheduled service |
+| `DeviceServices.run#DeviceRequestInternal` | The interface a driver component implements: `run#DeviceGatewayRequest` of moqui-device-gateway on MR-Moqui, `run#Plc4jRequest` of moqui-plc4j on Java |
+| `DeviceServices.send#DeviceNotification` | Notifies the holders of `DEVICE_NOTIFY` about an event of a device |
+| `DeviceServices.apply#DeviceConfig` | Copies the declared values of a `DeviceConfig` to the parameters of a device |
+| `DeviceServices.export#DeviceConfig` | Renders the recipe of a `DeviceRuleSet` (`get#DeviceConfigExportFiles`) and writes the files to the device |
+| `DeviceServices.transfer#DeviceContent` | Writes the file of a `DeviceContent` to a `file:` or `sftp://` destination |
+| `DeviceServices.export#Trajectory` | Publishes the waypoints of a planned trajectory as one MQTT message, through `run#DeviceRequest` |
+| `DeviceAcquisitionServices.store#Samples`, `store#LogSamples` | Store the values a driver read or received in `Parameter`, `ParameterLog` or `DeviceLog` |
+| `DeviceAcquisitionServices.start#Subscriptions` | Keeps the subscriptions of this gateway running, after a restart and after a fault |
+| `DeviceAcquisitionServices.get#GatewayScope`, `get#StartupSubscriptions` | The devices this gateway serves and the subscriptions of their controllers |
+| `TrajectoryPlannerServices.run#RobotArmTrajectoryPlanner` | Plans TCP waypoints with the ONNX model of a `MathModel` and persists the trajectory |
+| `TrajectoryPlannerServices.run#OpenVla`, `run#OpenVlaGrounding` | Send a device image and an instruction to OpenVLA; locate an object, optionally saved as vectors |
 
-The services are ported from the Groovy version (branch `main`) with the same
-names and parameters, in the mr-moqui and mr-mantle style: the XML Actions stay
-XML Actions with JavaScript expressions, and the logic of the Groovy scripts is
-in the JavaScript library `service/moqui/device/Devices.js` (notifications,
-`apply#DeviceConfig`, the recipe files, the file transfer), which each service calls with
-`execute(operation, context)` as the Mantle libraries are called. The Groovy
-class `TrajectoryGenerator` of the trajectory planner is the Rust tool
-`TrajectoryGenerator` (`src/trajectory.rs`). [SERVICE-PORT.md](SERVICE-PORT.md)
-lists the differences.
+All the names are in the package `moqui.device`. The services are ported from
+the Groovy version (branch `main`), in the mr-moqui and mr-mantle style: the XML
+Actions stay XML Actions with JavaScript expressions, and the logic of the
+Groovy scripts is in the JavaScript library `service/moqui/device/Devices.js`
+(notifications, `apply#DeviceConfig`, the recipe files, the file transfer), which
+each service calls with `execute(operation, context)` as the Mantle libraries are
+called. The Groovy class `TrajectoryGenerator` of the trajectory planner is the
+Rust tool `TrajectoryGenerator` (`src/trajectory.rs`).
+[SERVICE-PORT.md](SERVICE-PORT.md) lists the differences.
 
-`run#DeviceRequest` calls the service in `DeviceRequest.runServiceName` with
-`device`, `request`, `connection`, `requestItemList` and `bulkRequestItemList`,
-as in the Groovy version. A request without `runServiceName` runs on the driver
-of its connection (`FieldbusServices.run#FieldbusRequest`), as
-`Plc4jServices.run#Plc4jRequest` of moqui-plc4j did with PLC4J. Retrying a write
-whose outcome is uncertain is the caller's decision.
+### Who calls whom
 
-`DeviceGatewayServices.xml` keeps the services of the Groovy version that called
-the Camel gateway over REST, with the same names and parameters; they now run in
-this process. A routing request (`routerEnumId="DrrMoquiDeviceGateway"`) names
-in its `query` the request that does the work; its `brokerUri`, the REST address
-of the former gateway, is not used.
+```
+DeviceServices.run#DeviceRequest(requestName)              loads request, device, connection, items
+  └─ request.runServiceName                                an implementation of run#DeviceRequestInternal,
+       e.g. moqui.device.gateway.DeviceGatewayServices      in the driver component
+            .run#DeviceGatewayRequest
+         ├─ a read: values ──────────────────────────────► DeviceAcquisitionServices.store#Samples
+         └─ a subscription: values, later, from the driver ► DeviceAcquisitionServices.store#Samples / store#LogSamples
+                                                              └─ after#Samples (SECAs); notify#InboundState on long failures
+  └─ a subscription request: DeviceAcquisitionServices.record#SubscriptionState
 
-### Fieldbus requests
+ServiceJob start_DeviceGatewaySubscriptions (every minute)
+  └─ DeviceAcquisitionServices.start#Subscriptions
+       ├─ get#StartupSubscriptions → get#GatewayScope
+       └─ DeviceServices.run#DeviceRequest for each        running: unchanged; stopped by a fault: started again
 
-The drivers are those of
-[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
-(branch `mr-moqui`), a Rust library this component depends on; its README lists
-the connection options and addresses. `run#FieldbusRequest` takes the driver from
-`DeviceConnection.driverEnumId` (`DcdMqtt`, `DcdOpcUa`, `DcdModbusTCP`), else from
-the scheme of `DeviceRequest.brokerUri` or `DeviceConnection.transportConfig`
-(`mqtt://`, `mqtts://`, the Camel form `paho-mqtt5:?brokerUrl=...`, `opc.tcp://`,
-`modbus-tcp://`). The item address is `DeviceRequestItem.query`, else
-`DeviceRequest.query`.
+DeviceServices.export#DeviceConfig / transfer#DeviceContent   no driver: files through mr-moqui
+  └─ get#DeviceConfigExportFiles or get#DeviceContentTransferFiles, then Devices.js transferFiles
+       file: → resource facade, sftp:// → SftpClient
+```
 
-| Request type | Effect |
-|---|---|
-| `DrtRead` | Reads the items and stores the values (`store#Samples`) |
-| `DrtWrite` | Writes the values of the item Parameters; an MQTT write without items publishes the `payload` parameter as JSON |
-| `DrtSubscribe`, `DrtEvent`, `DrtStateChange` | Subscribes; what arrives goes through the sample queue to `store#Samples` |
-| `DrtCyclic` | Polls at `pollingInterval` (an MQTT `DrtCyclic` subscribes) |
-| `DrtUnsubscribe` | Stops the subscription of `parentRequestName` |
+This component never names a driver service. A `DeviceRequest` names the service
+that runs it in `runServiceName`, as the requests of moqui-plc4j named
+`moqui.plc4j.Plc4jServices.run#Plc4jRequest`; the driver component sets it in its
+own data, and calls back the store services of this component with what it reads.
+The persistence (the role of `Plc4jUtil.createOrUpdateBulk`) is here. Retrying a
+write whose outcome is uncertain is the caller's decision.
+
+### Values and subscriptions
 
 `DrpLogging` requests write `ParameterLog` rows; the others update the current
-`Parameter` values. A subscription delivers to a bounded queue; its worker stores
-the batches (`src/fieldbus_store.rs`) and, while the database does not answer,
-keeps them and tries again, so that a durable MQTT subscription stops taking
-messages and the broker keeps them (see the gateway README). Use
-`FieldbusServices.after#Samples` for failure-isolated after-store SECAs.
-`run#PlcLogRequest` subscribes to the LoggerFacade events of moqui-plc: an event
-with a `source` becomes a `ParameterLog` of that Parameter, an event without one
-a `DeviceLog`.
+`Parameter` values, writing only the last value of each parameter of a batch.
+`store#LogSamples` stores PLC log events: an event with a `source` becomes a
+`ParameterLog` of that Parameter, an event without one a `DeviceLog`. Use
+`after#Samples` for failure-isolated after-store SECAs.
 
 | Property | Default | Use |
 |---|---|---|
 | `device_gateway_device_id` | empty | The gateway Device this instance is: a `PhysicalDevice` and a `DgmpEdgeGateway` member of its DeviceGroups. Set: the subscriptions of the controllers in its scope are started, and a request for a device outside its scope is refused. Empty: nothing is started and no scope is checked |
 | `device_gateway_restore_subscriptions` | `true` | `false` on an instance that must not start the subscriptions |
-| `device_gateway_error_notification` | `true` | `false` turns off the notices of failing stores |
-| `device_gateway_error_notification_seconds` | `60` | How long the values of a request fail to store before the users are told |
 | `device_config_export_location`, `device_config_export_location_2` | empty | Where `export#DeviceConfig` writes a recipe when its request has no connection |
 
 MR-Moqui has no startup hook, so the service job `start_DeviceGatewaySubscriptions`
-calls `start#Subscriptions` every minute. Its first run in a process starts the
-active `DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` requests of
-the controllers in the scope of `device_gateway_device_id`
-(`get#StartupSubscriptions`); later runs restart only the subscriptions that
-ended without an unsubscribe. An unsubscribed request stays stopped. When the
-values of a request fail to store for `device_gateway_error_notification_seconds`
-the users get a notice on `DeviceGatewayInboundFailed`, and one on
-`DeviceGatewayInboundRecovered` when they store again.
+calls `start#Subscriptions` every minute. Each run asks `run#DeviceRequest` for
+every active `DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` request
+of the controllers in the scope of `device_gateway_device_id`: one that runs
+answers `unchanged`, one that does not (after a restart, or when its connection
+was lost) is started. A failure is tried again after a delay, up to a budget, then
+notified. A request stopped by an explicit `DrtUnsubscribe` stays stopped until it
+is subscribed again. The state is per process: each instance keeps its own
+subscriptions.
 
 ### Notifications
 
@@ -432,25 +427,27 @@ the users get a notice on `DeviceGatewayInboundFailed`, and one on
 the title. The recipients are the members of the user groups with the
 permission `DEVICE_NOTIFY` (ADMIN in the seed data), besides the sender, and
 the topic's subscribers. A notice that fails is logged and does not fail the
-caller. The topics are `DeviceGatewayRequest`, `DeviceGatewayRequestCompleted`,
-`DeviceGatewayRequestFailed`, `DeviceGatewayInboundFailed` and
-`DeviceGatewayInboundRecovered`.
+caller. It is for work no caller sees: the values of a subscription that are not
+stored (`DeviceInboundFailed`) and stored again (`DeviceInboundRecovered`). A
+service called from a screen or a job, such as a write or a recipe export,
+returns its error to the caller instead; a scheduled job can also notify its
+result through the `topic` of its `ServiceJob`.
 
 ### Device content transfer
 
-`transfer#DeviceContent` writes the file of a `DeviceContent` to a device, as
-the transfer route of the Camel gateway did:
+Only mr-moqui moves files; a PLC does not. `transfer#DeviceContent` writes the
+file of a `DeviceContent` (CNC program, part program, G-Code, firmware) to a
+device:
 
 ```
-moqui.device.DeviceGatewayServices.transfer#DeviceContent
+moqui.device.DeviceServices.transfer#DeviceContent
     requestName     = VIRTUAL_PLC_01_TransferContent
     deviceContentId = <the DeviceContent to send>
 ```
 
 It reads the file from `DeviceContent.contentLocation` through the resource
-facade and writes it to the destination of the `DrtContentTransfer` request named
-in the `query` of `requestName` (or of `requestName` itself without a query); the
-content must belong to the device of that request. The destination is its
+facade and writes it to the destination of the `DrtContentTransfer` request; the
+content must belong to the device of the request. The destination is its
 `brokerUri`, else the `transportConfig` of its `DeviceConnection`:
 
 - `file:/mnt/cnc-share/programs`, written through the resource facade;
@@ -459,7 +456,8 @@ content must belong to the device of that request. The destination is its
   destination, are `host-key-fingerprint` (`SHA256:...`, required), `username`
   and `password` or `private-key-file`; `usernameEnv` and `passwordEnv` name an
   environment variable instead. Read the fingerprint with
-  `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`.
+  `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`. `DeviceConnection.options`
+  holds 63 characters, so the fingerprint usually goes in the query.
 
 `DeviceTestData.xml` ships `VIRTUAL_PLC_01_TransferContent` and
 `DG_EDGE_01_TransferContent`. The SimpleScreens device screens find these
@@ -469,25 +467,26 @@ for the parameter write.
 
 ### Recipe export
 
-`export#DeviceConfig` renders the recipe of a `DeviceRuleSet` and writes the
-files to the device, as the export route of the Camel gateway did. The
-destination is the `DeviceConnection` of the request (its `transportConfig`,
-`file:` or `sftp://`, and its options, as for a content transfer); without a
-connection, the properties `device_config_export_location` and, when set,
+`export#DeviceConfig` extracts the recipe of a `DeviceRuleSet` from
+`DeviceRule`, `DeviceConfig` and `Parameter` and writes the files to the device,
+so that it can work on its recipes offline. The destination is the
+`DeviceConnection` of the request (its `transportConfig`, `file:` or `sftp://`,
+and its options, as for a content transfer); without a connection, the
+properties `device_config_export_location` and, when set,
 `device_config_export_location_2`:
 
 ```
-moqui.device.DeviceGatewayServices.export#DeviceConfig
+moqui.device.DeviceServices.export#DeviceConfig
     requestName     = VIRTUAL_PLC_01_ExportProcess
     deviceRuleSetId = <the DeviceRuleSet>
     deviceId        = <optional, only the rules of this device>
 ```
 
-`get#DeviceConfigExportFiles` writes one file per `DeviceRule.priority`, named
-`ruleSetName_pNN.txt`, with one `name:=value` line per `Parameter` of the rule's
-`DeviceConfig` and, when the configuration has a trajectory, the
-`Trajectory.points[i]...` lines of its `TrajectoryPoint` records. The result is
-notified with `receive#GatewayRequestCallback`.
+`get#DeviceConfigExportFiles` writes one file per `DeviceRule.priority`, in the
+CODESYS txt-recipe format, named `ruleSetName_pNN.txt`, with one `name:=value`
+line per `Parameter` of the rule's `DeviceConfig` and, when the configuration has
+a trajectory, the `Trajectory.points[i]...` lines of its `TrajectoryPoint`
+records. A failed transfer is an error of the service, with `status` `failed`.
 
 ## Service layer — Python ecosystem via moqui-jep
 
@@ -627,8 +626,9 @@ machinery.
 
 ### Dispatching the computed trajectory — export#Trajectory
 
-`export#Trajectory` is in `DeviceGatewayServices.xml`, as in the Java version. There it sent the waypoints to
-the Camel gateway over REST; on this branch it publishes them itself through `run#DeviceRequest`.
+In the Java version `export#Trajectory` sent the waypoints to the Camel gateway over REST; on this branch
+`DeviceServices.export#Trajectory` publishes them through `run#DeviceRequest`, on the MQTT driver named by the
+request's `runServiceName` (moqui-device-gateway sets it in its data).
 
 `TrajectoryPlannerData.xml` ships minimal seed data to test the ephemeral dispatch
 path end-to-end:
@@ -644,7 +644,7 @@ The `DeviceRequest` is an MQTT write without items: `brokerUri` is the broker
 To dispatch after planning:
 
 ```
-moqui.device.DeviceGatewayServices.export#Trajectory
+moqui.device.DeviceServices.export#Trajectory
     approximatedFunctionId = <output of run#RobotArmTrajectoryPlanner>
     requestName            = ROBOT_ARM_TRAJECTORY_EXPORT
 ```
@@ -830,7 +830,8 @@ becoming a second configuration source.
 ## Dependencies
 
 - **moqui-math** `1.0.0`
-- **moqui-device-gateway** `0.1.0` (MR-Moqui branch)
+
+Driver components depend on this one: moqui-device-gateway (MR-Moqui) or moqui-plc4j (Java).
 
 ## Install
 
@@ -840,14 +841,14 @@ the `main` branch.
 ## MR-Moqui branch
 
 For the XML/JavaScript model scope and focused checks, see
-[model migration notes](MIGRATION-STATUS.md). The services are in `DeviceServices.xml`
-(the Groovy services), `FieldbusServices.xml` (the requests on the drivers, the
-subscriptions and the stored values) and `DeviceGatewayServices.xml` (the services
-of the Camel gateway); see the [service ownership and porting map](SERVICE-PORT.md).
+[model migration notes](MIGRATION-STATUS.md). The services are described above
+(see [Services](#services)) and in the [service ownership and porting map](SERVICE-PORT.md).
 
 Use this branch with [MR-Moqui master](https://github.com/moqui/mr-moqui), plus
-`moqui-math` and `moqui-device-gateway` (branch `mr-moqui`) under
-`runtime/component`. No Mantle component is required.
+`moqui-math` under `runtime/component`. Install
+[moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
+(branch `mr-moqui`) too to run requests on MQTT, OPC UA or Modbus TCP devices; it
+depends on this component. No Mantle component is required.
 From the framework root:
 
 ```bash
@@ -858,9 +859,9 @@ From the framework root:
 
 MR-Moqui runs the component's JavaScript/XML services and its Rust crate; there is
 no Gradle build or JVM library on this branch. Field communication (MQTT, OPC UA,
-Modbus TCP) runs on the drivers of moqui-device-gateway in the same process, with
-no HTTP hop and no gateway API key; files and SFTP use the framework's resource
-facade and `SftpClient`. OpenVLA is called
+Modbus TCP, later EtherNet/IP, PROFINET, EtherCAT, BACnet) runs on the drivers of
+moqui-device-gateway in the same process, with no HTTP hop and no gateway API key;
+files and SFTP use the framework's resource facade and `SftpClient`. OpenVLA is called
 over HTTP with `call#OpenVla` and `call#OpenVlaGrounding`; a non-success HTTP
 response stops the operation. For the canonical component test suite, follow
 [test/README.md](test/README.md), which describes the optional Mantle telemetry setup.
@@ -915,8 +916,9 @@ MR-Moqui implements the services with XML Actions, JavaScript and the Rust
 registered ONNX model in-process with the 12-input TCP contract; the bundled
 `data/ml/trajectory_planner.onnx` runs in the component tests.
 
-Protocol execution belongs to moqui-device-gateway. On MR-Moqui it is a Rust
-driver library in the same process, used by the services of this component; on
-the Java line (`main`) it is a separate Quarkus/Camel service reached over HTTP.
+Protocol execution belongs to a driver component. On MR-Moqui it is
+moqui-device-gateway, a Rust driver library in the same process whose
+`run#DeviceGatewayRequest` implements `run#DeviceRequestInternal`; on the Java
+line it was moqui-plc4j, or the separate Quarkus/Camel gateway reached over HTTP.
 Supported protocol options are documented in the gateway's `mr-moqui` README, and
 which service took over each Camel route in [SERVICE-PORT.md](SERVICE-PORT.md).

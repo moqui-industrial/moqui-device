@@ -2,15 +2,15 @@
 
 ## Ownership
 
-`moqui-device` owns the model and every service, declared in
-`service/moqui/device/`: `DeviceServices.xml` (the Groovy services),
-`FieldbusServices.xml` (requests on the drivers, subscriptions, stored values),
-`DeviceGatewayServices.xml` (the services that called the Camel gateway) and
-`TrajectoryPlannerServices.xml`. The layout is the one of mr-mantle:
+`moqui-device` owns the model and the protocol-independent services, declared in
+`service/moqui/device/`: `DeviceServices.xml` (the Groovy services, the recipe
+export, the file transfer, the trajectory export), `DeviceAcquisitionServices.xml`
+(gateway scope, restart of subscriptions, storage of the values read or received)
+and `TrajectoryPlannerServices.xml`. The layout is the one of mr-mantle:
 
 - Each service declares its parameters in XML. A Groovy service written as XML Actions
   stays XML Actions, with JavaScript expressions (`run#DeviceRequest`,
-  `run#DeviceRequestGroup`, `receive#GatewayRequestCallback`, the DeviceContent
+  `run#DeviceRequestGroup`, the DeviceContent
   services, `export#DeviceConfig`, `transfer#DeviceContent`).
 - The logic of a Groovy script is in the JavaScript library
   `service/moqui/device/Devices.js`, which the service calls with
@@ -22,21 +22,23 @@
 - The Groovy class `org.moqui.device.TrajectoryGenerator` of the trajectory planner,
   and the work of the planner's scripts on bytes and numbers, is the Rust tool
   `TrajectoryGenerator` (`src/trajectory.rs`); ONNX Runtime takes the place of DJL.
-- Rust also handles the fieldbus requests (`src/fieldbus.rs`: a DeviceRequest and
-  its items become a request of the gateway facade), the sample queue and its
-  worker (`src/fieldbus_store.rs`, tool `DeviceSampleStore`), the restoration of
-  subscriptions (`src/restoration.rs`), sample persistence (`src/inbound.rs`) and
-  the bytes of a DeviceContent (`src/content.rs`).
+- Rust also handles sample persistence (`src/inbound.rs`, the role of
+  `Plc4jUtil.createOrUpdateBulk`), the restart of subscriptions
+  (`src/restoration.rs`, tool `DeviceSubscriptions`) and the bytes of a
+  DeviceContent (`src/content.rs`).
 
-No JDBC, raw SQL, HTTP gateway client or protocol library is required here.
+No JDBC, raw SQL, HTTP gateway client or protocol library is required here, and
+no driver service is named, in the services or the data.
 
-`moqui-device-gateway` (branch `mr-moqui`) is a Rust driver library this
-component depends on (Cargo and `component.xml`), as moqui-plc4j's services used
-PLC4J: backends for MQTT, OPC UA and Modbus TCP behind `DeviceGatewayFacade`, and
-the `DeviceGateway` tool that holds one facade in MR-Moqui. It has no services and
-no entity access; its API stays usable without Moqui, for example by a future
-RuSTy host in moqui-plc with its own sample sink. This reuse does not establish
-hard-real-time or safety guarantees.
+The drivers are a separate component, as moqui-plc4j was: on MR-Moqui
+`moqui-device-gateway` (branch `mr-moqui`), which depends on this one. Its
+`moqui.device.gateway.DeviceGatewayServices.run#DeviceGatewayRequest` implements
+`run#DeviceRequestInternal`, as `moqui.plc4j.Plc4jServices.run#Plc4jRequest` did,
+and dispatches through Rust objects to the FieldbusClient of the protocol, on the
+conventions of PLC4X; its data set the `runServiceName` of the fieldbus requests,
+and it hands what it reads to `DeviceAcquisitionServices.store#Samples`. Its Rust
+facade stays usable without Moqui, for example by a future RuSTy host in
+moqui-plc. This reuse does not establish hard-real-time or safety guarantees.
 
 ## Migration Map
 
@@ -50,36 +52,37 @@ Actions and JavaScript in the mr-moqui and mr-mantle style:
 | Groovy service | Port |
 | --- | --- |
 | `send#DeviceNotification` | Same name; Mantle notification pattern (see below) |
-| `receive#GatewayRequestCallback` | Same name and parameters; called locally, so no longer `allow-remote` |
+| `receive#GatewayRequestCallback` | Removed: it was the REST endpoint the Camel gateway called after a write or an export. A service called from a screen or a job returns its error; work no caller sees (subscriptions) is notified by `DeviceAcquisitionServices` |
 | `apply#DeviceConfig` | Same contract |
 | `run#DeviceRequestGroup` | Same contract; `distribute=true` is an error (no distributed dispatch on MR-Moqui) |
-| `run#DeviceRequest` | Same contract: a dispatcher to `DeviceRequest.runServiceName`; without one, the driver of the connection (`FieldbusServices.run#FieldbusRequest`). It also returns the outputs of the request (`status`, `errorMessage`, ...) and passes an MQTT `payload` |
+| `run#DeviceRequest` | Same contract: a dispatcher to `DeviceRequest.runServiceName`, which is required. It also returns the outputs of the request (`status`, `errorMessage`, ...), passes an MQTT `payload`, and records subscriptions for their restart (`record#SubscriptionState`) |
 | `run#DeviceRequestInternal` | Same interface: device, request, connection, requestItemList, bulkRequestItemList |
 | DeviceContent services | Same contracts, on MR resources and FileItem |
 
-`DeviceGatewayServices.xml` keeps the services of the Groovy version, with the same
-names and parameters. They called the Camel gateway over REST; they run here now,
-and the Camel routes became these services:
+The Groovy `DeviceGatewayServices.xml` called the Camel gateway over REST, through
+routing requests (`routerEnumId="DrrMoquiDeviceGateway"`) that named the real
+request in their `query`. It is not kept: no compatibility is maintained. The
+Camel routes became these services:
 
-| Groovy service / Camel route | Port |
+| Groovy service / Camel route | Now |
 | --- | --- |
-| `run#GatewayDeviceRequest` / `dispatch-device-request` | `run#DeviceRequest` of the request in the `query` of the routing request |
-| `export#DeviceConfig` / `run-device-config-export`, `transfer-file` (and `file.transfer.uri.2`) | `get#DeviceConfigExportFiles` (the export SQL on the Entity Engine) renders the files; they are written to the `DeviceConnection` of the request, else to `device_config_export_location` (and `_2`); notified with `receive#GatewayRequestCallback` |
-| `transfer#DeviceContent` / `transfer-device-content` | The file goes to the `file:` or `sftp://` destination of the request in the `query` (resource facade, `SftpClient`); no Base64 REST hop |
-| `export#Trajectory` / `/api/trajectory/export` (advertised, never exposed by the gateway) | `get#TrajectoryAxes`, then one MQTT payload message through `run#DeviceRequest`; the request's `brokerUri` is now the broker |
-| `receive#GatewayNotification` / `InboundErrorNotifier` | The sample worker notifies itself (`FieldbusServices.notify#InboundState`); the service does the same for an external caller instead of only logging |
-| `mqtt-read-*`, `opcua-read-*` consumers | `FieldbusServices.run#FieldbusRequest` on the gateway drivers, subscriptions into the sample queue |
-| `store-device-request-inbound`, `store-parameter-batch`, `store-log-batch` | `FieldbusServices.store#Samples` (current values or `ParameterLog`, by purpose) from the sample worker |
-| `plc-log-consumer`, `plc-log-ingest-*` | `FieldbusServices.run#PlcLogRequest` and `store#LogSamples` (`ParameterLog` with a source, `DeviceLog` without) |
-| `after-store-callback` | SECAs on `FieldbusServices.after#Samples` |
-| startup subscription discovery, gateway scope | `FieldbusServices.get#GatewayScope`, `get#StartupSubscriptions`, `start#Subscriptions` (service job `start_DeviceGatewaySubscriptions`) |
+| `run#GatewayDeviceRequest` / `dispatch-device-request` | The request itself names `run#DeviceGatewayRequest` (moqui-device-gateway) in `runServiceName` |
+| `export#DeviceConfig` / `run-device-config-export`, `transfer-file` (and `file.transfer.uri.2`) | `DeviceServices.export#DeviceConfig`: `get#DeviceConfigExportFiles` (the export SQL on the Entity Engine) renders the files; they are written to the `DeviceConnection` of the request, else to `device_config_export_location` (and `_2`) |
+| `transfer#DeviceContent` / `transfer-device-content` | `DeviceServices.transfer#DeviceContent`: the file goes to the `file:` or `sftp://` destination of the request (resource facade, `SftpClient`); no Base64 REST hop |
+| `export#Trajectory` / `/api/trajectory/export` (advertised, never exposed by the gateway) | `DeviceServices.export#Trajectory`: `get#TrajectoryAxes`, then one MQTT payload message through `run#DeviceRequest` |
+| `receive#GatewayNotification` / `InboundErrorNotifier` | The sample worker of moqui-device-gateway calls `DeviceAcquisitionServices.notify#InboundState` |
+| `mqtt-read-*`, `opcua-read-*` consumers | `run#DeviceGatewayRequest` subscriptions in moqui-device-gateway |
+| `store-device-request-inbound`, `store-parameter-batch`, `store-log-batch` | `DeviceAcquisitionServices.store#Samples` (current values or `ParameterLog`, by purpose) |
+| `plc-log-consumer`, `plc-log-ingest-*` | `run#PlcLogRequest` of moqui-device-gateway, then `DeviceAcquisitionServices.store#LogSamples` (`ParameterLog` with a source, `DeviceLog` without) |
+| `after-store-callback` | SECAs on `DeviceAcquisitionServices.after#Samples` |
+| startup subscription discovery, gateway scope | `DeviceAcquisitionServices.get#GatewayScope`, `get#StartupSubscriptions`, `start#Subscriptions` (service job `start_DeviceGatewaySubscriptions`) |
 
-The Groovy data run unchanged: the routing requests keep
-`runServiceName="moqui.device.DeviceGatewayServices.*"`, and the requests in their
-`query` have no `runServiceName`, so they run on the driver of their endpoint, as
-the Camel gateway chose its route. Two data changes: `ROBOT_ARM_TRAJECTORY_EXPORT`
-has the broker as `brokerUri` (it was the gateway REST address) and a timeout in
-milliseconds, and the driver enumeration has `DcdMqtt`.
+Data changes: the routing requests are removed, and the requests that did the
+work take the names the device screens look for (`{deviceId}_SyncParameters`,
+`{deviceId}_TransferContent`); the export requests (`{deviceId}_ExportProcess`)
+belong to the device; `ROBOT_ARM_TRAJECTORY_EXPORT` has the broker as `brokerUri`
+and a timeout in milliseconds; the driver enumeration has `DcdMqtt`, `DcdFile` and
+`DcdSftp`.
 
 `TrajectoryPlannerServices.xml` keeps the services of the Groovy version with their
 names and parameters:
@@ -122,8 +125,9 @@ The crate `examples/onnx-obstacle` is a separate experiment and is unchanged.
   data), besides the sender, plus the userIds given and the topic's subscribers. The
   topics of `DeviceData.xml` give the type, the alert, the inbox and the title. A
   notice that fails is logged; the caller's work stands.
-- `receive#GatewayRequestCallback` chooses the topic from the event:
-  `DeviceGatewayRequestCompleted`, `DeviceGatewayRequestFailed` or `DeviceGatewayRequest`.
+- The notification topics are `DeviceInboundFailed` and `DeviceInboundRecovered`
+  (`DeviceGatewayInbound*` in the Groovy version); the `DeviceGatewayRequest*`
+  topics of the gateway callback are removed with it.
 - `transfer#DeviceContent` checks that the content belongs to the request's device
   before reading its bytes.
 - `save#DeviceContentFile` accepts a file name, not a path, and a DeviceContent of
@@ -153,11 +157,10 @@ and acquisition notices inside `run#DeviceRequest`, and `notify#DeviceRequestRes
 ## Verification And Remaining Boundary
 
 Build from mr-moqui with `./moq build --debug -j 4` and run the component specs
-with `./moq test moqui-device`. Inference, provider and fieldbus cases are opt-in
-(see `test/README.md`). `scripts/run-fieldbus-tests.py` starts local Modbus, OPC
-UA, MQTT and SFTP peers and runs them all; `scripts/run-acceptance.py` adds broker
-loss, database outage and restart. Both need Docker with the `atmoz/sftp:alpine`
-and `apache/activemq-artemis` images.
+with `./moq test moqui-device`; it needs no driver component. Inference, provider
+and SFTP cases are opt-in (see `test/README.md`). The requests on the drivers,
+with local Modbus, OPC UA and MQTT peers, and the acceptance runs (broker loss,
+database outage, restart) are those of moqui-device-gateway.
 
 **Known framework gap:** distributed service dispatch is not implemented by this
 MR host. `distribute=true` fails explicitly before any I/O; it is not equivalent
