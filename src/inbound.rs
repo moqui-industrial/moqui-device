@@ -267,14 +267,24 @@ fn gateway_scope() -> Result<Result<Option<HashSet<String>>, String>, Error> {
     })))
 }
 
-/// The single-sample path, in its own transaction: the fallback that isolates the sample a batch failed on.
+/// Whether a row of `entity` matches all the conditions.
+fn exists(ef: &EntityFacade, entity: &str, conditions: &[(&str, Value)]) -> Result<bool, Error> {
+    let mut query = ef.find(entity)?.use_cache(false);
+    for (field, value) in conditions {
+        query = query.eq(field, value.clone());
+    }
+    Ok(query.count()? > 0)
+}
+
+/// The single-sample path, in its own transaction: the fallback that isolates the sample a batch failed on. Its checks
+/// are those of [`Planner::plan`], duplicates included.
 fn persist(
     ef: &EntityFacade,
     request: &EntityValue,
     sample: &Value,
     plc_log: bool,
     batch_index: usize,
-) -> Result<bool, Error> {
+) -> Result<Outcome, Error> {
     let Value::Map(m) = sample else {
         return Err(Error::new("A sample must be a map"));
     };
@@ -316,7 +326,7 @@ fn persist(
     let transactions = ef.transactions_for(target)?;
     let tx = transactions.scope(None)?;
     find(ef, "moqui.device.Device", "deviceId", device_id, true)?;
-    let (date, _) = observed(sample)?;
+    let (date, stamped) = observed(sample)?;
     let value = m.get("value").ok_or_else(|| Error::new("Sample requires value"))?;
     let sequence = sequence_of(sample)?;
     if let Some(id) = parameter_id {
@@ -348,7 +358,19 @@ fn persist(
             )?
         {
             tx.commit()?;
-            return Ok(false);
+            return Ok(Outcome::Unchanged);
+        }
+        // A log row already stored, with the device's time or the same sequenceNum: a broker delivered it again.
+        let parameter_key = ("parameterId", Value::string(id));
+        if logging
+            && (stamped && exists(ef, target, &[parameter_key.clone(), ("observedDate", date.clone())])?
+                || match sequence {
+                    Some(n) => exists(ef, target, &[parameter_key, ("sequenceNum", Value::Decimal(n))])?,
+                    None => false,
+                })
+        {
+            tx.commit()?;
+            return Ok(Outcome::Duplicate);
         }
         if logging {
             let mut log = ef.make_value(target)?;
@@ -369,6 +391,17 @@ fn persist(
             parameter.update(ef)?;
         }
     } else {
+        if let (true, Some(n)) = (stamped, sequence) {
+            let key = [
+                ("deviceId", Value::string(device_id)),
+                ("observedDate", date.clone()),
+                ("sequenceNum", Value::Decimal(n)),
+            ];
+            if exists(ef, target, &key)? {
+                tx.commit()?;
+                return Ok(Outcome::Duplicate);
+            }
+        }
         let mut log = ef.make_value(target)?;
         log.set_sequenced_id_primary(ef)?;
         log.set("deviceId", Value::string(device_id));
@@ -381,7 +414,7 @@ fn persist(
         log.create(ef)?;
     }
     tx.commit()?;
-    Ok(true)
+    Ok(Outcome::Stored)
 }
 
 /// Samples written in one transaction. A data file's load writes the same way: reads first, then every write sent
@@ -890,11 +923,9 @@ pub fn store_samples(
                     .iter()
                     .enumerate()
                     .map(|(i, sample)| {
-                        single
-                            .run(TransactionAttribute::IgnoreSuspend, None, || {
-                                persist(&ef, &request, sample, plc_log, offset + i)
-                            })
-                            .map(|stored| if stored { Outcome::Stored } else { Outcome::Unchanged })
+                        single.run(TransactionAttribute::IgnoreSuspend, None, || {
+                            persist(&ef, &request, sample, plc_log, offset + i)
+                        })
                     })
                     .collect();
                 if outcomes.iter().all(Result::is_err) && !database_available(&ef, name) {
@@ -1016,7 +1047,8 @@ fn finish(
         });
         ec.message().take_errors_since(mark);
     }
-    if stored > 0 || (failed == 0 && !done.is_empty()) {
+    // Only a batch that wrote something: a polling cycle whose values did not change costs no service call.
+    if stored > 0 {
         let mut callback = parameters.clone();
         callback.insert("samples".into(), Value::List(done.to_vec()));
         callback.extend(out.clone());

@@ -16,11 +16,11 @@
 //!
 //! moqui.device.DeviceAcquisitionServices.start#Subscriptions, called by a ServiceJob, asks run#DeviceRequest for every
 //! subscription and polling read of the controllers in the scope of this gateway (get#StartupSubscriptions, discovered
-//! once per process). The implementation of a request answers `unchanged` for one that is running, starts one that is
-//! not (after a restart, or when its connection was lost), or fails; a failure is tried again after a delay, up to
-//! `maxAttempts`, and then notified, after which the request waits for a restart of the process or a new subscribe.
-//! A request stopped with an explicit unsubscribe (record#SubscriptionState) is not started again until it is
-//! subscribed again. The state is per process: each instance restores its own requests.
+//! again on every call). The implementation of a request answers `unchanged` for one that is running, starts one that
+//! is not (after a restart, or when its connection was lost), or fails. A failed start is tried again without limit,
+//! each wait twice the previous one up to a maximum, and notified once after a number of failures in a row. A request
+//! stopped with an explicit unsubscribe (record#SubscriptionState) is not started again until it is subscribed again.
+//! The state is per process: each instance restores its own requests.
 use moqui_core::{
     context::{Error as FactoryError, ExecutionContext, ExecutionContextFactory},
     native::{Parameters, ServiceInfo, Tool, ToolFactory},
@@ -36,25 +36,26 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// The failed starts of a request since its last success, and when to try again.
 #[derive(Default)]
 struct Attempts {
     count: u64,
     next: Option<Instant>,
 }
 impl Attempts {
-    fn ready(&self, max: u64, now: Instant) -> bool {
-        self.count < max && self.next.is_none_or(|next| next <= now)
+    fn ready(&self, now: Instant) -> bool {
+        self.next.is_none_or(|next| next <= now)
     }
-    fn record(&mut self, delay: Duration) {
+    /// One more failure: the next attempt waits `delay`, doubled after each failure up to `max_delay`.
+    fn record(&mut self, delay: Duration, max_delay: Duration, now: Instant) {
         self.count += 1;
-        self.next = Some(Instant::now() + delay);
+        let factor = 1u32 << (self.count - 1).min(20);
+        self.next = Some(now + delay.saturating_mul(factor).min(max_delay));
     }
 }
 #[derive(Default)]
 struct Restoration {
-    discovered: bool,
-    discovery: Attempts,
-    /// The subscriptions to keep running, with the failed attempts since the last success.
+    /// The requests to keep running, as the last discovery found them, with their failed starts.
     requests: BTreeMap<String, Attempts>,
     /// Stopped by an explicit unsubscribe.
     stopped: BTreeSet<String>,
@@ -64,6 +65,8 @@ struct Restoration {
 #[derive(Default)]
 pub struct DeviceSubscriptionsFactory {
     state: Mutex<Restoration>,
+    /// Held by the start#Subscriptions under way.
+    running: Mutex<()>,
 }
 struct DeviceSubscriptionsTool;
 impl Tool for DeviceSubscriptionsTool {}
@@ -149,6 +152,9 @@ pub fn record(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) -
             if matches!(status.as_str(), "active" | "unchanged") =>
         {
             state.stopped.remove(&name);
+            if let Some(attempts) = state.requests.get_mut(&name) {
+                *attempts = Attempts::default();
+            }
         }
         _ => {}
     }
@@ -157,8 +163,9 @@ pub fn record(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) -
 
 /// moqui.device.DeviceAcquisitionServices.start#Subscriptions.
 pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) -> Result<Parameters, Error> {
-    let max = integer(params, "maxAttempts", 3, 1, 100)?;
+    let notify_after = integer(params, "notifyAfterAttempts", 3, 1, 1000)?;
     let delay = Duration::from_millis(integer(params, "retryDelayMillis", 60_000, 0, 86_400_000)?);
+    let max_delay = Duration::from_millis(integer(params, "maxRetryDelayMillis", 900_000, 0, 86_400_000)?).max(delay);
     let mut started = Vec::new();
     let mut failed = Vec::new();
     let mut out = Parameters::new();
@@ -168,56 +175,52 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
         return Ok(out);
     }
     let factory = factory(ec)?;
-    // the calls below record their own state: take what is due now, then release the lock
-    let now = Instant::now();
-    let discover = {
-        let mut state = factory
-            .state
-            .try_lock()
-            .map_err(|_| Error::new("Subscription restoration is already running"))?;
-        let due = !state.discovered && state.discovery.ready(max, now);
-        if due {
-            state.discovery.record(delay);
+    // One restoration at a time; the calls below record their own state, so the lock is not held across them.
+    let _running = factory
+        .running
+        .try_lock()
+        .map_err(|_| Error::new("Subscription restoration is already running"))?;
+    // Discover on every call: a request added or ended since the last call is taken or left. While the discovery
+    // fails (the database does not answer), the requests found last keep being restored.
+    let discovered = isolated(
+        ec,
+        "moqui.device.DeviceAcquisitionServices.get#StartupSubscriptions",
+        &Parameters::new(),
+    );
+    let discovery_error = match discovered {
+        Ok(found) if found.get("ready") == Some(&Value::Bool(true)) => {
+            let names = match found.get("requestNames") {
+                Some(Value::List(names)) => names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect::<BTreeSet<_>>(),
+                _ => BTreeSet::new(),
+            };
+            let mut state = lock(&factory)?;
+            state.requests.retain(|name, _| names.contains(name));
+            state.stopped.retain(|name| names.contains(name));
+            for name in names {
+                state.requests.entry(name).or_default();
+            }
+            None
         }
-        due
+        result => {
+            let message = match result {
+                Ok(found) => found.get("message").map(to_plain_string).unwrap_or_default(),
+                Err(error) => error.to_string(),
+            };
+            tracing::warn!(error=%message, "Subscription discovery failed; the requests found last are restored");
+            Some(message)
+        }
     };
-    if discover {
-        let discovered = isolated(
-            ec,
-            "moqui.device.DeviceAcquisitionServices.get#StartupSubscriptions",
-            &Parameters::new(),
-        );
-        let mut state = factory
-            .state
-            .lock()
-            .map_err(|_| Error::new("Subscription state lock poisoned"))?;
-        match discovered {
-            Ok(found) if found.get("ready") == Some(&Value::Bool(true)) => {
-                if let Some(Value::List(names)) = found.get("requestNames") {
-                    for name in names.iter().filter_map(Value::as_str) {
-                        state.requests.entry(name.to_owned()).or_default();
-                    }
-                }
-                state.discovered = true;
-            }
-            result => {
-                let message = match result {
-                    Ok(found) => found.get("message").map(to_plain_string).unwrap_or_default(),
-                    Err(error) => error.to_string(),
-                };
-                tracing::warn!(attempt=state.discovery.count, max_attempts=max, error=%message, "Subscription discovery failed; retry budget is retained");
-            }
-        }
-    }
+    let now = Instant::now();
     let candidates = {
-        let state = factory
-            .state
-            .lock()
-            .map_err(|_| Error::new("Subscription state lock poisoned"))?;
+        let state = lock(&factory)?;
         state
             .requests
             .iter()
-            .filter(|(name, a)| !state.stopped.contains(*name) && a.ready(max, now))
+            .filter(|(name, a)| !state.stopped.contains(*name) && a.ready(now))
             .map(|(name, _)| name.clone())
             .collect::<Vec<_>>()
     };
@@ -227,32 +230,33 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
             "moqui.device.DeviceServices.run#DeviceRequest",
             &Parameters::from([("requestName".into(), Value::string(&name))]),
         );
-        let status = result
-            .as_ref()
-            .ok()
-            .and_then(|r| r.get("status"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        let mut state = factory
-            .state
-            .lock()
-            .map_err(|_| Error::new("Subscription state lock poisoned"))?;
+        let (status, error) = match &result {
+            Ok(r) => (
+                r.get("status").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                r.get("errorMessage").map(to_plain_string).unwrap_or_default(),
+            ),
+            Err(error) => (String::new(), error.to_string()),
+        };
+        let mut state = lock(&factory)?;
         let Some(attempts) = state.requests.get_mut(&name) else {
-            continue; // stopped meanwhile
+            continue; // ended meanwhile
         };
         match status.as_str() {
             "unchanged" => *attempts = Attempts::default(),
             "active" | "completed" => {
+                if attempts.count > 0 {
+                    tracing::info!(request=%name, failed_attempts=attempts.count, "Subscription started again");
+                }
                 *attempts = Attempts::default();
                 started.push(name);
             }
             _ => {
-                attempts.record(delay);
+                attempts.record(delay, max_delay, Instant::now());
                 let count = attempts.count;
                 drop(state);
-                tracing::warn!(request=%name, attempt=count, max_attempts=max, "Subscription start failed; other requests continue");
-                if count == max {
+                tracing::warn!(request=%name, attempt=count, error=%error, "Subscription start failed; it is tried again later");
+                // Notified once per failure cycle; the attempts go on.
+                if count == notify_after {
                     let _ = isolated(
                         ec,
                         "moqui.device.DeviceAcquisitionServices.notify#AcquisitionError",
@@ -260,7 +264,9 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
                             ("requestName".into(), Value::string(&name)),
                             (
                                 "errorMessage".into(),
-                                Value::string(format!("Subscription retry limit exhausted after {count} attempts")),
+                                Value::string(format!(
+                                    "The subscription has failed to start {count} times and is tried again: {error}"
+                                )),
                             ),
                         ]),
                     );
@@ -269,28 +275,60 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
             }
         }
     }
-    let state = factory
-        .state
-        .lock()
-        .map_err(|_| Error::new("Subscription state lock poisoned"))?;
-    let waiting = |exhausted: bool| {
+    let state = lock(&factory)?;
+    out.insert("startedRequestNames".into(), list(started));
+    out.insert("failedRequestNames".into(), list(failed));
+    out.insert(
+        "pendingRequestNames".into(),
         list(
             state
                 .requests
                 .iter()
-                .filter(|(n, a)| !state.stopped.contains(*n) && a.count > 0 && (a.count >= max) == exhausted)
+                .filter(|(n, a)| !state.stopped.contains(*n) && a.count > 0)
                 .map(|(n, _)| n.clone()),
-        )
-    };
-    out.insert("startedRequestNames".into(), list(started));
-    out.insert("failedRequestNames".into(), list(failed));
-    out.insert("pendingRequestNames".into(), waiting(false));
-    out.insert("exhaustedRequestNames".into(), waiting(true));
+        ),
+    );
     out.insert("stoppedRequestNames".into(), list(state.stopped.iter().cloned()));
-    out.insert("discoveryAttemptCount".into(), Value::I64(state.discovery.count as i64));
     out.insert(
-        "discoveryExhausted".into(),
-        Value::Bool(!state.discovered && state.discovery.count >= max),
+        "discoveryError".into(),
+        discovery_error.map(Value::string).unwrap_or(Value::Null),
     );
     Ok(out)
+}
+
+fn lock(factory: &DeviceSubscriptionsFactory) -> Result<std::sync::MutexGuard<'_, Restoration>, Error> {
+    factory
+        .state
+        .lock()
+        .map_err(|_| Error::new("Subscription state lock poisoned"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_delay_doubles_up_to_the_maximum_and_attempts_never_end() {
+        let (delay, max) = (Duration::from_secs(60), Duration::from_secs(900));
+        let start = Instant::now();
+        let mut attempts = Attempts::default();
+        let mut waits = Vec::new();
+        for _ in 0..30 {
+            attempts.record(delay, max, start);
+            waits.push(attempts.next.unwrap() - start);
+        }
+        assert_eq!(&waits[..6], &[60, 120, 240, 480, 900, 900].map(Duration::from_secs));
+        assert!(waits.iter().all(|w| *w <= max));
+        assert_eq!(attempts.count, 30);
+        assert!(!attempts.ready(start));
+        assert!(attempts.ready(start + max));
+    }
+
+    #[test]
+    fn a_zero_delay_retries_at_once() {
+        let mut attempts = Attempts::default();
+        let now = Instant::now();
+        attempts.record(Duration::ZERO, Duration::ZERO, now);
+        assert!(attempts.ready(now));
+    }
 }

@@ -256,7 +256,8 @@ along with this software (see the LICENSE.md file). If not, see
             The files go to the DeviceConnection of requestName: its transportConfig, file:directory or
             sftp://host:port/directory, with its options (see transfer#DeviceContent). Without a connection they go to
             the location in the property device_config_export_location and, when set, device_config_export_location_2.
-            A failure is an error of the service, with status failed and errorMessage.
+            All or nothing: when a file fails at any destination, every file the export wrote, at every destination, is
+            deleted (a file that replaced an older one too), and the service fails with status failed and errorMessage.
 
             Persistent trajectories (one Parameter per axis per waypoint, under a dedicated DeviceRuleSet) are exported
             by this same service; export#Trajectory is the ephemeral path.
@@ -309,10 +310,8 @@ along with this software (see the LICENSE.md file). If not, see
             <script>
                 const devices = ec.resource.script('component://moqui-device/service/moqui/device/Devices.js')
                 try {
-                    for (const destination of destinations) {
-                        transferredFiles = transferredFiles.concat(devices.execute('transferFiles',
-                            {endpoint:destination.endpoint, options:destination.options, files:rendered.files}).transferredFiles)
-                    }
+                    // one transfer to every destination: a failure at any of them deletes what the others got
+                    transferredFiles = devices.execute('transferFiles', {destinations:destinations, files:rendered.files}).transferredFiles
                     status = 'completed'
                 } catch (error) {
                     status = 'failed'
@@ -369,6 +368,7 @@ along with this software (see the LICENSE.md file). If not, see
             the resource facade, or sftp://host:port/directory, written with SftpClient. SFTP options, in
             DeviceConnection.options or the query of the destination: host-key-fingerprint (SHA256:..., required),
             username and password or private-key-file; usernameEnv and passwordEnv name an environment variable instead.
+            A file that fails to be written is not left in part: what was written is deleted and the service fails.
         </description>
         <in-parameters>
             <parameter name="deviceContentId" required="true"/>

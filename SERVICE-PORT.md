@@ -167,11 +167,18 @@ The crate `examples/onnx-obstacle` is a separate experiment and is unchanged.
   one, so a bad row cannot roll back valid ones. When the database does not
   answer, `retryable` and `retryFromIndex` tell the caller what to send again.
   A logging sample with the device time or the sequenceNum of a stored row is
-  a `duplicate`, so a broker redelivery adds no row. A current value is compared
+  a `duplicate`, on the chunk path and on the one-by-one path alike, so a
+  broker redelivery adds no row. A current value is compared
   with the `Parameter` of the entity cache, so an unchanged value of a polling
   cycle costs no database read; only the Parameters that change are read again,
   locked, and written. This holds on one node, since the Entity Engine clears
-  the cache on every write.
+  the cache on every write. `after#Samples` runs only for a batch that wrote a
+  row.
+- A transfer (`export#DeviceConfig`, `transfer#DeviceContent`) is all or
+  nothing: when a file fails at any destination, every file it wrote is deleted.
+  The Groovy version left the files already sent.
+- `start#Subscriptions` retries a failed start without limit, with a doubling
+  delay up to 15 minutes, and notifies once after three failures in a row.
 - Recipe export preserves selectors, value precedence, names, priority files,
   trajectory/blending rows and ordering from the original SQL. Deduplication
   includes the target, so one shared DeviceConfig can supply multiple devices.

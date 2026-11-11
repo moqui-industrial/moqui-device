@@ -53,7 +53,7 @@ model, command, log, and audit both how a device *moves* and how it *switches*.
 |---|---|
 | Digital Twin | `Device`, `PhysicalDevice`, `DeviceGroup`, `DeviceGroupMember`, `DeviceContent`, `DeviceStats`, `DeviceLog` |
 | Math Binding | `DeviceMathModel` — binds a `Device` to a `moqui.math.MathModel` for training, inference, simulation, or monitoring |
-| Connectivity | `DeviceConnection` — driver types Modbus TCP, OPC UA, MQTT, EtherNet/IP, CANopen, PROFINET, BACnet/IP, KNXnet/IP, MTConnect, Logix CIP/EIP (on MR-Moqui, moqui-device-gateway runs MQTT, OPC UA, Modbus TCP, file and SFTP) |
+| Connectivity | `DeviceConnection` — driver types Modbus TCP, OPC UA, MQTT, EtherNet/IP, CANopen, PROFINET, BACnet/IP, KNXnet/IP, MTConnect, Logix CIP/EIP (on MR-Moqui, moqui-device-gateway runs Modbus TCP, OPC UA, MQTT, EtherNet/IP and EtherCAT; moqui-device itself writes files and SFTP) |
 | Requests | `DeviceRequest`, `DeviceRequestItem` — Read, Write, ConfigWrite, Subscribe (Event / StateChange / Cyclic), Unsubscribe, ContentTransfer, Browse, Discovery |
 | Configuration | `DeviceConfig` + `Parameter` — reusable atomic recipes, drive macros, tuning profiles, startup profiles, safety baselines, and configuration artifacts |
 | Rules | `DeviceRuleSet`, `DeviceRule` — ordered production cycles, batch procedures, commissioning plans, validation sequences, and recovery procedures scoped to a root `Device` |
@@ -418,7 +418,8 @@ the Parameters that change are read again, locked, and written. The cache is
 cleared by every write through the Entity Engine, which is enough on one node.
 `store#LogSamples` stores PLC log events: an event with a `source` becomes a
 `ParameterLog` of that Parameter, an event without one a `DeviceLog`. Use
-`after#Samples` for failure-isolated after-store SECAs.
+`after#Samples` for failure-isolated after-store SECAs; it runs only for a batch that
+wrote at least one row, so an unchanged polling cycle calls no service.
 
 | Property | Default | Use |
 |---|---|---|
@@ -427,14 +428,18 @@ cleared by every write through the Entity Engine, which is enough on one node.
 | `device_config_export_location`, `device_config_export_location_2` | empty | Where `export#DeviceConfig` writes a recipe when its request has no connection |
 
 MR-Moqui has no startup hook, so the service job `start_DeviceGatewaySubscriptions`
-calls `start#Subscriptions` every minute. Each run asks `run#DeviceRequest` for
-every active `DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` request,
-and every `DrtRead` with a `pollingInterval`, of the controllers in the scope of `device_gateway_device_id`: one that runs
+calls `start#Subscriptions` every minute. Each run looks up again every active
+`DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` request, and every
+`DrtRead` with a `pollingInterval`, of the controllers in the scope of
+`device_gateway_device_id`, and asks `run#DeviceRequest` for each: one that runs
 answers `unchanged`, one that does not (after a restart, or when its connection
-was lost) is started. A failure is tried again after a delay, up to a budget, then
-notified. A request stopped by an explicit `DrtUnsubscribe` stays stopped until it
-is subscribed again. The state is per process: each instance keeps its own
-subscriptions.
+was lost) is started. A failed start is tried again without limit: after
+`retryDelayMillis` (1 minute), then after twice the previous wait, up to
+`maxRetryDelayMillis` (15 minutes). After `notifyAfterAttempts` (3) failures in a
+row the users are notified once; a device off for maintenance is acquired again
+as soon as it answers. A request stopped by an explicit `DrtUnsubscribe` stays
+stopped until it is subscribed again. The state is per process: each instance
+keeps its own subscriptions.
 
 ### Notifications
 
@@ -503,7 +508,9 @@ moqui.device.DeviceServices.export#DeviceConfig
 CODESYS txt-recipe format, named `ruleSetName_pNN.txt`, with one `name:=value`
 line per `Parameter` of the rule's `DeviceConfig` and, when the configuration has
 a trajectory, the `Trajectory.points[i]...` lines of its `TrajectoryPoint`
-records. A failed transfer is an error of the service, with `status` `failed`.
+records. A transfer is all or nothing: when a file fails at any destination,
+every file the export wrote, at every destination, is deleted, and the service
+fails with `status` `failed`. A device never finds part of a recipe set.
 
 ## Service layer — Python ecosystem via moqui-jep
 
@@ -877,7 +884,7 @@ From the framework root:
 
 MR-Moqui runs the component's JavaScript/XML services and its Rust crate; there is
 no Gradle build or JVM library on this branch. Field communication (MQTT, OPC UA,
-Modbus TCP, EtherNet/IP, EtherCAT; later PROFINET, BACnet) runs on the drivers of
+Modbus TCP, EtherNet/IP, EtherCAT) runs on the drivers of
 moqui-device-gateway in the same process, with no HTTP hop and no gateway API key;
 files and SFTP use the framework's resource facade and `SftpClient`. OpenVLA is called
 over HTTP with `call#OpenVla` and `call#OpenVlaGrounding`; a non-success HTTP

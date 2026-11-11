@@ -310,32 +310,32 @@ function credential(options, name) {
     return String(found)
 }
 
-// Writes files to a destination: file:directory through the resource facade, or sftp://host:port/directory with
-// SftpClient (options host-key-fingerprint, required, username and password or private-key-file, each also as
-// ...Env). files: maps with name and bytes or content (text).
-function transferFiles(p) {
-    let endpoint = nonEmpty(p.endpoint)
+// A destination to write files to: file:directory through the resource facade, or sftp://host:port/directory with
+// SftpClient (options host-key-fingerprint, required, username and password or private-key-file, each also as ...Env).
+// open() connects, write(file) returns where the file went, remove(where) deletes it, close() disconnects.
+function destination(spec) {
+    let endpoint = nonEmpty(spec.endpoint)
     if (!endpoint) fail("The transfer has no destination: set DeviceRequest.brokerUri or DeviceConnection.transportConfig")
-    const files = Array.from(p.files || [])
-    if (!files.length) fail("No files to transfer")
-    const options = destinationOptions(p.options)
+    const options = destinationOptions(spec.options)
     const query = endpoint.indexOf("?")
     if (query >= 0) {
         destinationOptions(endpoint.slice(query + 1), options)
         endpoint = endpoint.slice(0, query)
     }
-    const transferred = []
     if (endpoint.startsWith("file:")) {
         const directory = endpoint.replace(/\/+$/, "")
-        for (const file of files) {
-            const location = directory + "/" + fileName(file.name)
-            const reference = ec.resource.getLocationReference(location)
-            if (file.bytes != null) reference.putBytes(file.bytes)
-            else if (file.content != null) reference.putText(String(file.content))
-            else fail("The file " + file.name + " has no bytes or content")
-            transferred.push(location)
+        return {
+            open() {},
+            write(file) {
+                const location = directory + "/" + file.name
+                const reference = ec.resource.getLocationReference(location)
+                if (file.bytes) reference.putBytes(file.data)
+                else reference.putText(file.data)
+                return location
+            },
+            remove(location) { ec.resource.getLocationReference(location).delete() },
+            close() {}
         }
-        return {transferredFiles: transferred}
     }
     const sftp = /^sftp:\/\/([^\/:@?#]+)(?::(\d+))?(\/[^?#]*)?$/.exec(endpoint)
     if (!sftp) fail("Unsupported transfer destination " + endpoint + ": use file:directory or sftp://host:port/directory")
@@ -344,25 +344,79 @@ function transferFiles(p) {
     const username = credential(options, "username") || credential(options, "userName")
     if (!username) fail("SFTP requires a username")
     const password = credential(options, "password")
-    const client = new SftpClient(sftp[1], username, sftp[2] ? Number(sftp[2]) : null)
-    client.hostKeyFingerprint(fingerprint)
-    if (password != null) client.password(password)
-    else if (options["private-key-file"]) client.publicKeyPkcs8(ec.resource.getLocationReference("file:" + options["private-key-file"]).getText(), null)
-    else fail("SFTP requires a password or a private-key-file")
+    const privateKey = options["private-key-file"]
+    if (password == null && !privateKey) fail("SFTP requires a password or a private-key-file")
     const directory = (sftp[3] || "/").replace(/\/+$/, "") || "/"
-    const base = "sftp://" + sftp[1] + (sftp[2] ? ":" + sftp[2] : "") + (directory === "/" ? "" : directory)
-    client.connect()
-    try {
-        for (const file of files) {
-            const name = fileName(file.name)
-            if (file.bytes == null && file.content == null) fail("The file " + file.name + " has no bytes or content")
-            client.put(directory, name, file.bytes != null ? file.bytes : String(file.content), null, true)
-            transferred.push(base + "/" + name)
+    const base = "sftp://" + sftp[1] + (sftp[2] ? ":" + sftp[2] : "")
+    let client = null
+    return {
+        open() {
+            client = new SftpClient(sftp[1], username, sftp[2] ? Number(sftp[2]) : null)
+            client.hostKeyFingerprint(fingerprint)
+            if (password != null) client.password(password)
+            else client.publicKeyPkcs8(ec.resource.getLocationReference("file:" + privateKey).getText(), null)
+            client.connect()
+        },
+        write(file) {
+            client.put(directory, file.name, file.data, null, true)
+            return base + (directory === "/" ? "" : directory) + "/" + file.name
+        },
+        remove(location) { client.rm(location.slice(base.length)) },
+        close() {
+            if (client != null) client.close()
+            client = null
         }
-    } finally {
-        client.close()
     }
-    return {transferredFiles: transferred}
+}
+
+// Writes the same files to one destination (endpoint, options) or to several (destinations: maps of endpoint and
+// options), in order. files: maps with name and bytes or content (text). All or nothing: every file and destination is
+// checked before the first file is written, and when a write fails, every file this transfer wrote, at every
+// destination, is deleted, so a device never finds part of a recipe or program set. A file that replaced an older one
+// is deleted too. The error names any file that could not be deleted.
+function transferFiles(p) {
+    const files = Array.from(p.files || []).map(file => {
+        if (file.bytes == null && file.content == null) fail("The file " + file.name + " has no bytes or content")
+        return {name: fileName(file.name), data: file.bytes != null ? file.bytes : String(file.content), bytes: file.bytes != null}
+    })
+    if (!files.length) fail("No files to transfer")
+    if (new Set(files.map(file => file.name)).size !== files.length) fail("A transfer writes each file name once")
+    const targets = Array.from(p.destinations || [{endpoint: p.endpoint, options: p.options}]).map(destination)
+    if (!targets.length) fail("The transfer has no destination")
+    const written = []
+    try {
+        for (const target of targets) {
+            const done = {target, locations: []}
+            written.push(done)
+            target.open()
+            try {
+                for (const file of files) done.locations.push(target.write(file))
+            } finally {
+                target.close()
+            }
+        }
+    } catch (error) {
+        const reason = String(error && error.message || error)
+        const left = []
+        for (const done of written.reverse()) {
+            if (!done.locations.length) continue
+            try {
+                done.target.open()
+                try {
+                    for (const location of done.locations.reverse()) {
+                        try { done.target.remove(location) } catch (removeError) { left.push(location) }
+                    }
+                } finally {
+                    done.target.close()
+                }
+            } catch (openError) {
+                left.push(...done.locations)
+            }
+        }
+        fail(left.length ? "The transfer failed (" + reason + ") and these files it had written could not be deleted: " + left.join(", ")
+            : "The transfer failed and the files it had written were deleted: " + reason)
+    }
+    return {transferredFiles: written.flatMap(done => done.locations)}
 }
 
 const operations = {notify, applyConfig, configExportFiles, transferFiles}

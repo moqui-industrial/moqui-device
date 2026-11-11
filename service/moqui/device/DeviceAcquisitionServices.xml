@@ -129,27 +129,28 @@ along with this software (see the LICENSE.md file). If not, see
     <service verb="start" noun="Subscriptions" type="rust" location="moqui_device::restoration::start"
             authenticate="false" transaction="ignore">
         <description>
-            Keeps the subscriptions and polling reads of this gateway (get#StartupSubscriptions, discovered on the first
-            successful call of the process) running, whatever their driver: after a start, and after a fault. On every
-            call it asks DeviceServices.run#DeviceRequest for each of them; the implementation answers unchanged for one
-            that is running and starts one that is not. A failure is tried again after retryDelayMillis; the scheduled
-            job calls it every minute and no service thread sleeps between attempts. maxAttempts is the total of a
-            failure cycle, not a new budget on every call: an exhausted request waits for a restart of the process, a
-            new subscribe, or a call with a higher maxAttempts. An explicit unsubscribe stops the restoration of that
-            request. The property device_gateway_restore_subscriptions=false turns it off for this instance.
+            Keeps the subscriptions and polling reads of this gateway (get#StartupSubscriptions, discovered again on
+            every call, so a request added or ended meanwhile is taken or left) running, whatever their driver: after a
+            start, and after a fault. On every call it asks DeviceServices.run#DeviceRequest for each of them; the
+            implementation answers unchanged for one that is running and starts one that is not. A failed start is
+            tried again without limit: after retryDelayMillis, then after twice the previous wait, up to
+            maxRetryDelayMillis. The scheduled job calls it every minute and no service thread sleeps between attempts.
+            After notifyAfterAttempts failures in a row the users are notified once (notify#AcquisitionError); the
+            attempts go on, and the restart is logged. While the discovery fails, the requests found last are
+            restored. An explicit unsubscribe stops the restoration of that request. The property
+            device_gateway_restore_subscriptions=false turns it off for this instance.
         </description>
         <in-parameters>
-            <parameter name="maxAttempts" type="Integer" default="3"/>
+            <parameter name="notifyAfterAttempts" type="Integer" default="3"/>
             <parameter name="retryDelayMillis" type="Long" default="60000"/>
+            <parameter name="maxRetryDelayMillis" type="Long" default="900000"/>
         </in-parameters>
         <out-parameters>
             <parameter name="startedRequestNames" type="List"/>
             <parameter name="failedRequestNames" type="List"/>
-            <parameter name="pendingRequestNames" type="List"/>
-            <parameter name="exhaustedRequestNames" type="List"/>
+            <parameter name="pendingRequestNames" type="List"><description>Failed and waiting for the next attempt.</description></parameter>
             <parameter name="stoppedRequestNames" type="List"><description>Stopped by an explicit unsubscribe.</description></parameter>
-            <parameter name="discoveryAttemptCount" type="Long"/>
-            <parameter name="discoveryExhausted" type="Boolean"/>
+            <parameter name="discoveryError"><description>Why the discovery failed on this call.</description></parameter>
         </out-parameters>
     </service>
     <service verb="record" noun="SubscriptionState" type="rust" location="moqui_device::restoration::record"
@@ -250,8 +251,9 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="after" noun="Samples" authenticate="false" transaction="ignore">
-        <description>Extension hook after a successful sample batch has committed. Attach SECAs here for local
-            after-store callbacks. Hook errors are logged and isolated from the saved data and persistence health.</description>
+        <description>Extension hook after a sample batch has committed at least one row (storedCount > 0): a batch
+            whose current values were all unchanged, or whose log rows were all duplicates, does not call it. Attach
+            SECAs here for local after-store callbacks. Hook errors are logged and isolated from the saved data and persistence health.</description>
         <in-parameters>
             <parameter name="requestName" required="true"/>
             <parameter name="samples" type="List"/>
