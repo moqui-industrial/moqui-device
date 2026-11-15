@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <moqui-conf xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/moqui-conf-3.xsd">
     <default-property name="onnx.session.cache.max" value="8"/>
+    <!-- Default MQTT broker endpoint when DeviceRequest.brokerUri is not specified -->
+    <default-property name="device_mqtt_broker_uri" value="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1"/>
     <!-- The DeviceGroupMember (DgmpEdgeGateway) Device this instance is. Set: subscriptions of the controllers in its
          scope are restored after a start and requests outside its scope are refused; empty: no restoration, no scope. -->
     <default-property name="device_gateway_device_id" value=""/>
