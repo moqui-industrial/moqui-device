@@ -778,8 +778,8 @@ moqui-math and moqui-device, including MR-Moqui's scratch test database.
 
 Optional WorkEffort and Measurement telemetry is isolated in
 [`test/mantle/MantleTestData.xml`](test/mantle/MantleTestData.xml), outside `data/`.
-To run tests using those records, install `mantle-udm` and temporarily add
-`<depends-on name="mantle-udm"/>` to the test runtime's component manifest, then
+To run tests using those records, install `mr-mantle` and temporarily add
+`<depends-on name="mr-mantle"/>` to the test runtime's component manifest, then
 explicitly load that file after normal seeds and `DeviceTestData.xml`. Restore
 the ordinary manifest after testing. Mantle is never needed for normal use.
 See [test instructions](test/README.md).

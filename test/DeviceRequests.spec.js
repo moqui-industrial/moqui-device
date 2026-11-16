@@ -161,8 +161,10 @@ feature("a trajectory recipe is written as the Camel gateway wrote it", {
         out.recipe.includes("Trajectory.pointCount:=2")
         out.recipe.includes("Trajectory.points[0].isBreakPoint:=FALSE")
         out.recipe.includes("Trajectory.points[1].isBreakPoint:=TRUE")
+        out.recipe.includes("Trajectory.points[0].sequenceNum:=1")
         out.recipe.includes("Trajectory.points[0].pos.v[0]:=")
         out.recipe.includes("Trajectory.points[0].blendingMode:=10")
+        out.recipe.includes("Trajectory.points[1].blendingMode:=0")
     },
     cleanup() {
         unexport("VIRTUAL_PLC_01_ExportProcess", "GatewayTestExportTrajectory")
