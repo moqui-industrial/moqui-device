@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Devices (plan/design-devices.md §3.2, §3.3): the physical devices' list and their detail (hidden from the menu).
+    recordKind tells the shared Find and DeviceDetail which records they show; Groups sets it to group. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Devices" default-menu-index="2" menu-image="sym_o_memory" menu-image-type="icon">
+    <always-actions>
+        <set field="recordKind" value="device"/>
+    </always-actions>
+    <subscreens default-item="Find" always-use-full-path="true"/>
+    <widgets>
+        <subscreens-active/>
+    </widgets>
+</screen>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Groups › GroupDetail › Members (plan/design-devices.md §3.4): a group's members by sequence (find#Members), each opening its detail (a
+    device's or, for a nested group, a group's), with its purpose, sequence, membership status (a chip), status flow and description, found by purpose and status (the
+    Java EditDeviceGroupMembers). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Members" default-menu-index="2">
+    <parameter name="deviceId" required="true"/>
+    <parameter name="purposeEnumId"/>
+    <parameter name="statusId"/>
+    <parameter name="pageIndex"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.find#Members" out-map="context" transaction="force-new"
+                ignore-error="true" in-map="{deviceId:deviceId, purposeEnumId:purposeEnumId, statusId:statusId, pageIndex:pageIndex}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="memberList" from="memberList || []"/>
+    </actions>
+    <widgets>
+        <container-box>
+            <box-header title="Members"/>
+            <box-body-nopad>
+                <form-list name="MemberRows" list="memberList" skip-form="true" paginate="true" header-dialog="true" select-columns="true"
+                        show-csv-button="true">
+                    <field name="purposeEnumId">
+                        <header-field title="Purpose">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'memberPurposes', selected:purposeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="statusId">
+                        <header-field title="Status">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'memberStatuses', selected:statusId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+
+                    <field name="memberName">
+                        <default-field title="Member">
+                            <link url="${sharedLinks[memberIsGroup ? 'Groups/GroupDetail' : 'Devices/DeviceDetail']}" text="${memberName}"
+                                    link-type="anchor" parameter-map="{deviceId:memberDeviceId}"/>
+                        </default-field>
+                    </field>
+                    <field name="memberDeviceId"><default-field title="Id"><display/></default-field></field>
+                    <field name="purposeText"><default-field title="Purpose"><display/></default-field></field>
+                    <field name="sequenceNum" align="right"><default-field title="Sequence"><display/></default-field></field>
+                    <field name="statusText">
+                        <default-field title="Status">
+                            <render-mode>
+                                    <text type="qvt"><![CDATA[${statusText ? '<q-chip dense square class="q-ma-none m-tonal text-' + statusColor + '">' + WebUtilities.encodeHtml(statusText) + '</q-chip>' : ''}]]></text>
+                                    <text type="tui"><![CDATA[${JSON.stringify({t: "text", text: statusText || ""})}]]></text>
+                                    <text type="html">${statusText || ''}</text>
+                                </render-mode>
+                        </default-field>
+                    </field>
+                    <field name="statusFlowText"><default-field title="Status flow"><display/></default-field></field>
+                    <field name="descriptionText"><default-field title="Description"><display text="${description || ''}"/></default-field></field>
+                    <columns type="mobile">
+                        <column><field-ref name="memberName"/><field-ref name="purposeText"/></column>
+                        <column><field-ref name="statusText"/></column>
+                    </columns>
+                </form-list>
+                <label text="This group has no members." type="p" style="m-muted q-pa-md" condition="!memberList.length"/>
+            </box-body-nopad>
+        </container-box>
+    </widgets>
+</screen>

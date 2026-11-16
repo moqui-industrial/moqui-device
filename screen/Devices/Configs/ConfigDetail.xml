@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Configurations › ConfigDetail (plan/design-devices.md §3.5; style-guide §3.3 Detail): one configuration with its
+    record header (id, name, type · purpose · device type) and Edit for an engineer (update#Config); the tabs Overview and
+    Parameters (the configuration's own: those of no device, values edited in the row). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Configuration" default-menu-include="false">
+    <parameter name="deviceConfigId" required="true"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="updateConfig" location="component://moqui-device/template/DevicesParts.xml"/>
+    <subscreens default-item="Overview">
+        <subscreens-item name="Parameters" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Parameters.xml"
+                menu-title="Parameters" menu-index="2"/>
+    </subscreens>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Config" out-map="configAnswer" transaction="force-new"
+                ignore-error="true" in-map="{deviceConfigId:deviceConfigId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="recordFound" from="!!configAnswer?.config"/>
+        <set field="recordId" from="deviceConfigId"/>
+        <set field="config" from="configAnswer?.config || {}"/>
+        <set field="canEdit" from="!!configAnswer?.canEdit"/>
+    </actions>
+    <widgets>
+        <section name="RecordNotFound" condition="!recordFound">
+            <widgets>
+                <container-box type="warning">
+                    <box-header title="Not available"/>
+                    <box-body>
+                        <label text="Configuration ${recordId} is not available: it does not exist, or you may not read devices." type="p"/>
+                        <link url="${sharedLinks['Configs/Find']}" text="All configurations" link-type="anchor"/>
+                    </box-body>
+                </container-box>
+            </widgets>
+        </section>
+        <section name="ConfigFound" condition="recordFound">
+            <widgets>
+                <context record-entity="moqui.device.DeviceConfig" record-id="${deviceConfigId}" title="${config.name} · ${deviceConfigId}"/>
+                <container style="m-record-header">
+                    <container style="row items-start q-col-gutter-x-md q-col-gutter-y-sm">
+                        <container style="col-12 col-md m-record-title">
+                            <container style="row items-center q-gutter-x-sm">
+                                <label text="${deviceConfigId}" type="span" style="m-key-chip text-mono q-mr-sm"/>
+                                <label text="${config.name}" type="h5" style="q-my-none"/>
+                            </container>
+                            <label text="${config.caption}" type="div" style="text-caption m-muted" condition="config.caption"/>
+                        </container>
+                        <container style="col-12 col-md-auto row items-center q-gutter-x-xs q-gutter-y-xs m-record-actions">
+                            <container-dialog id="EditConfigDialog" button-text="Edit" type="primary" icon="sym_o_edit"
+                                    title="Edit ${config.name}" width="640" condition="canEdit">
+                                <form-single name="EditConfig" transition="updateConfig" map="config">
+                                    <field name="deviceConfigId"><default-field><hidden/></default-field></field>
+                                    <field name="configName"><default-field title="Name"><text-line size="40"/></default-field></field>
+                                    <field name="controlMethodEnumId">
+                            <default-field title="Control method">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'controlMethods', selected:controlMethodEnumId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="approximatedFunctionId">
+                            <default-field title="Trajectory">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'trajectories', selected:approximatedFunctionId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="fromDate"><default-field title="From"><date-time/></default-field></field>
+                                    <field name="thruDate"><default-field title="Through"><date-time/></default-field></field>
+                                    <field name="description"><default-field title="Description"><text-area rows="3"/></default-field></field>
+                                    <field name="submitButton"><default-field title=""><submit text="Save" type="primary"/></default-field></field>
+                                    <field-layout>
+                                        <field-row><field-ref name="configName"/><field-ref name="controlMethodEnumId"/></field-row>
+                                        <field-row><field-ref name="approximatedFunctionId"/></field-row>
+                                        <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
+                                        <field-ref name="description"/>
+                                        <field-ref name="submitButton"/>
+                                    </field-layout>
+                                </form-single>
+                            </container-dialog>
+                            <link url="${sharedLinks['Configs/Find']}" text="All configurations" icon="sym_o_list" link-type="anchor-button"/>
+                        </container>
+                    </container>
+                </container>
+                <subscreens-panel id="ConfigTabs" type="tab"/>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- The access of the Devices app (plan/design-devices.md §2): three permissions, the launcher group and two capability groups,
+    and the root grant. The grant opens navigation only: every moqui.device.DeviceAppServices service checks the permission of
+    what it reads or writes (DevicesApp.js require). -->
+<entity-facade-xml type="seed">
+    <moqui.security.UserPermission userPermissionId="DEVICE_VIEW" description="Devices: read devices, groups, configurations and processes"/>
+    <moqui.security.UserPermission userPermissionId="DEVICE_EDIT" description="Devices: edit configurations, processes, parameter values and content"/>
+    <moqui.security.UserPermission userPermissionId="DEVICE_OPERATE" description="Devices: run requests on the plant (apply a task, export a recipe, synchronize, transfer)"/>
+
+    <moqui.security.UserGroup userGroupId="DEVICES" description="Devices app users (the launcher and reading)"/>
+    <moqui.security.UserGroup userGroupId="DEVICES_ENGINEER" description="Devices engineer (edits the model)"/>
+    <moqui.security.UserGroup userGroupId="DEVICES_OPERATOR" description="Devices operator (runs requests on the plant)"/>
+
+    <moqui.security.UserGroupPermission userGroupId="DEVICES" userPermissionId="DEVICE_VIEW" fromDate="0"/>
+    <moqui.security.UserGroupPermission userGroupId="DEVICES_ENGINEER" userPermissionId="DEVICE_EDIT" fromDate="0"/>
+    <moqui.security.UserGroupPermission userGroupId="DEVICES_OPERATOR" userPermissionId="DEVICE_OPERATE" fromDate="0"/>
+    <moqui.security.UserGroupPermission userGroupId="ADMIN" userPermissionId="DEVICE_VIEW" fromDate="0"/>
+    <moqui.security.UserGroupPermission userGroupId="ADMIN" userPermissionId="DEVICE_EDIT" fromDate="0"/>
+    <moqui.security.UserGroupPermission userGroupId="ADMIN" userPermissionId="DEVICE_OPERATE" fromDate="0"/>
+
+    <artifactGroups artifactGroupId="DEVICES" description="IronStone Devices App (via root screen)">
+        <artifacts artifactName="component://moqui-device/screen/Devices.xml" artifactTypeEnumId="AT_XML_SCREEN" inheritAuthz="Y"/>
+        <artifacts artifactName="moqui\.device\.DeviceAppServices\..*" artifactTypeEnumId="AT_SERVICE" nameIsPattern="Y" inheritAuthz="Y"/>
+        <authz artifactAuthzId="DEVICES_ADMIN" userGroupId="ADMIN" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
+        <authz artifactAuthzId="DEVICES_ROOT" userGroupId="DEVICES" authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_ALL"/>
+    </artifactGroups>
+</entity-facade-xml>

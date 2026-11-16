@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Home (plan/design-devices.md §3.1; style-guide §3.1 Landing): the counters, each a link into its list; the areas as
+    nav cards; the group members out of service (get#Home). A user without DEVICE_VIEW is told so. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Home" default-menu-index="1" menu-image="sym_o_home" menu-image-type="icon">
+    <actions>
+        <set field="can" from="devices.capabilities"/>
+        <if condition="can.read">
+            <service-call name="moqui.device.DeviceAppServices.get#Home" out-map="home"/>
+        </if>
+        <set field="counts" from="home?.counts || {}"/>
+        <set field="membersDown" from="home?.membersDown || []"/>
+    </actions>
+    <widgets>
+        <label text="You do not read devices." type="p" style="m-muted" condition="!can.read"/>
+        <section name="DevicesHome" condition="can.read">
+            <widgets>
+                <label text="Devices" type="h5"/>
+                <dashboard min-width="200">
+                    <number-card title="Devices" value="${ec.l10n.format(counts.devices || 0, '#,##0')}" icon="sym_o_memory"
+                            link="${sharedLinks['Devices/Find']}"/>
+                    <number-card title="Device groups" value="${ec.l10n.format(counts.groups || 0, '#,##0')}" icon="sym_o_hub"
+                            link="${sharedLinks['Groups/Find']}"/>
+                    <number-card title="Members out of service" value="${ec.l10n.format(counts.membersDown || 0, '#,##0')}"
+                            icon="sym_o_report" link="${sharedLinks['Groups/Find']}"/>
+                    <number-card title="Processes" value="${ec.l10n.format(counts.processes || 0, '#,##0')}" icon="sym_o_account_tree"
+                            link="${sharedLinks['Processes/Find']}"/>
+                    <number-card title="Configurations" value="${ec.l10n.format(counts.configs || 0, '#,##0')}" icon="sym_o_tune"
+                            link="${sharedLinks['Configs/Find']}"/>
+                </dashboard>
+                <label text="There are no devices yet. Devices come from the plant's engineering model: load its data, then find them here."
+                        type="p" style="m-muted" condition="!counts.devices &amp;&amp; !counts.groups"/>
+                <container-row>
+                    <row-col md="7">
+                        <dashboard min-width="260">
+                            <nav-card title="Devices" text="PLCs, drives and computers: their parameters, files and current task"
+                                    icon="sym_o_memory" link="${sharedLinks['Devices/Find']}"/>
+                            <nav-card title="Groups" text="Cells and lines: their members, controller and requests"
+                                    icon="sym_o_hub" link="${sharedLinks['Groups/Find']}"/>
+                            <nav-card title="Configurations" text="The parameter sets a task applies to a device"
+                                    icon="sym_o_tune" link="${sharedLinks['Configs/Find']}"/>
+                            <nav-card title="Processes" text="Processes and their tasks, by priority"
+                                    icon="sym_o_account_tree" link="${sharedLinks['Processes/Find']}"/>
+                        </dashboard>
+                    </row-col>
+                    <row-col md="5">
+                        <container-box>
+                            <box-header title="Members out of service"/>
+                            <box-body-nopad>
+                                <form-list name="MembersDown" list="membersDown" skip-form="true" skip-header="true" paginate="false">
+                                    <field name="memberName">
+                                        <default-field title="Member">
+                                            <display/>
+                                        </default-field>
+                                    </field>
+                                    <field name="groupName">
+                                        <default-field title="Group">
+                                            <link url="${sharedLinks['Groups/GroupDetail']}" text="${groupName}" link-type="anchor"
+                                                    parameter-map="{deviceId:groupId}"/>
+                                        </default-field>
+                                    </field>
+                                    <field name="statusText" align="right">
+                                        <default-field title="Status">
+                                            <render-mode>
+                                                <text type="qvt"><![CDATA[<q-chip dense square class="q-ma-none m-tonal text-${statusColor}">${
+                                                    WebUtilities.encodeHtml(statusText)}</q-chip>]]></text>
+                                                <text type="tui"><![CDATA[${JSON.stringify({t: "text", text: statusText || ""})}]]></text>
+                                                <text type="html">${statusText || ''}</text>
+                                            </render-mode>
+                                        </default-field>
+                                    </field>
+                                    <columns type="mobile">
+                                        <column>
+                                            <field-ref name="memberName"/>
+                                            <field-ref name="groupName"/>
+                                        </column>
+                                        <column>
+                                            <field-ref name="statusText"/>
+                                        </column>
+                                    </columns>
+                                </form-list>
+                                <label text="Every group member is in service." type="p" style="m-muted q-pa-md" condition="!membersDown.length"/>
+                            </box-body-nopad>
+                        </container-box>
+                    </row-col>
+                </container-row>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

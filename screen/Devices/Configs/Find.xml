@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Configurations › Find (plan/design-devices.md §3.5; style-guide §3.2 List): the configurations found by text
+    (id, name, description; ignoring case), type, purpose, device type, control method, trajectory and parent, paged by find#Configs; each row opens ConfigDetail. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Configurations" default-menu-index="1">
+    <parameter name="text"/>
+    <parameter name="configTypeEnumId"/>
+    <parameter name="deviceTypeEnumId"/>
+    <parameter name="purposeEnumId"/>
+    <parameter name="controlMethodEnumId"/>
+    <parameter name="approximatedFunctionId"/>
+    <parameter name="parentConfigId"/>
+    <parameter name="pageIndex"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <set field="can" from="devices.capabilities"/>
+        <if condition="can.read">
+            <service-call name="moqui.device.DeviceAppServices.find#Configs" out-map="context"
+                    in-map="{text:text, configTypeEnumId:configTypeEnumId, deviceTypeEnumId:deviceTypeEnumId, purposeEnumId:purposeEnumId,
+                        controlMethodEnumId:controlMethodEnumId, approximatedFunctionId:approximatedFunctionId,
+                        parentConfigId:parentConfigId, pageIndex:pageIndex}"/>
+        </if>
+        <set field="configList" from="configList || []"/>
+    </actions>
+    <widgets>
+        <label text="You do not read devices." type="p" style="m-muted" condition="!can.read"/>
+        <section name="ConfigRegister" condition="can.read">
+            <widgets>
+                <label text="Configurations" type="h5"/>
+                <form-list name="ConfigRows" list="configList" skip-form="true" paginate="true" header-dialog="true" select-columns="true">
+                    <field name="text">
+                        <header-field title="Id, name or description">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="configTypeEnumId">
+                        <header-field title="Type">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'configTypes', selected:configTypeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="deviceTypeEnumId">
+                        <header-field title="Device type">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'deviceTypes', selected:deviceTypeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="purposeEnumId">
+                        <header-field title="Purpose">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'configPurposes', selected:purposeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="controlMethodEnumId">
+                        <header-field title="Control method">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'controlMethods', selected:controlMethodEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="approximatedFunctionId">
+                        <header-field title="Trajectory">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'trajectories', selected:approximatedFunctionId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="parentConfigId">
+                        <header-field title="Part of">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'configs', selected:parentConfigId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="name">
+                        <default-field title="Configuration">
+                            <link url="${sharedLinks['Configs/ConfigDetail']}" text="${name}" link-type="anchor"
+                                    parameter-map="{deviceConfigId:deviceConfigId}"/>
+                        </default-field>
+                    </field>
+                    <field name="deviceConfigId"><default-field title="Id"><display/></default-field></field>
+                    <field name="parentText">
+                        <default-field title="Part of">
+                            <link url="${sharedLinks['Configs/ConfigDetail']}" text="${parentText}" link-type="anchor"
+                                    parameter-map="{deviceConfigId:parentConfigId}" condition="parentConfigId"/>
+                        </default-field>
+                    </field>
+                    <field name="typeText"><default-field title="Type"><display/></default-field></field>
+                    <field name="purposeText"><default-field title="Purpose"><display/></default-field></field>
+                    <field name="deviceTypeText"><default-field title="Device type"><display/></default-field></field>
+                    <field name="controlMethodText"><default-field title="Control method"><display/></default-field></field>
+                    <field name="trajectoryText"><default-field title="Trajectory"><display text="${approximatedFunctionId || ''}"/></default-field></field>
+                    <field name="fromDateText"><default-field title="From"><display/></default-field></field>
+                    <field name="thruDateText"><default-field title="Through"><display/></default-field></field>
+                    <field name="description"><default-field title="Description"><display/></default-field></field>
+                    <columns type="mobile">
+                        <column><field-ref name="name"/><field-ref name="deviceConfigId"/></column>
+                        <column><field-ref name="typeText"/><field-ref name="deviceTypeText"/></column>
+                    </columns>
+                </form-list>
+                <label text="No configuration matches. Search by another name." type="p" style="m-muted" condition="!configList.length"/>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

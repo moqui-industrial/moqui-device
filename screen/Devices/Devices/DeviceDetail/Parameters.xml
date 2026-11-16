@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- DeviceDetail › Parameters, also GroupDetail's and ConfigDetail's (plan/design-devices.md §3.3–§3.5): every column of the Java
+    FindParameter (definition, parent definition, id, code, name, alias, type, purpose, group, class, permission, unit type and
+    unit, required, has value, priority, sequence, minimum, maximum, default, the value, description, external id, user) for a
+    device (deviceId; a group's with its members', each with its device) or a configuration (deviceConfigId, those of no
+    device), found by text and by type, purpose, group, class and permission, paged (find#Parameters). An engineer edits the
+    sequence, the value (a number or a text by the parameter's type) and the enumeration value in the row (update#ParameterValue,
+    a number within the definition's range). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Parameters" default-menu-index="3">
+    <parameter name="deviceId"/>
+    <parameter name="deviceConfigId"/>
+    <parameter name="text"/>
+    <parameter name="parameterTypeEnumId"/>
+    <parameter name="purposeEnumId"/>
+    <parameter name="groupEnumId"/>
+    <parameter name="classEnumId"/>
+    <parameter name="permissionEnumId"/>
+    <parameter name="pageIndex"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="updateParameter" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <set field="can" from="devices.capabilities"/>
+        <service-call name="moqui.device.DeviceAppServices.find#Parameters" out-map="context" transaction="force-new"
+                ignore-error="true" in-map="{deviceId:(deviceId || null), deviceConfigId:(deviceId ? null : deviceConfigId),
+                    text:text, parameterTypeEnumId:parameterTypeEnumId, purposeEnumId:purposeEnumId, groupEnumId:groupEnumId,
+                    classEnumId:classEnumId, permissionEnumId:permissionEnumId, pageIndex:pageIndex}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="parameterList" from="parameterList || []"/>
+        <set field="withDevice" from="!!withDevice"/>
+    </actions>
+    <widgets>
+        <form-list name="ParameterRows" list="parameterList" transition="updateParameter" paginate="true" header-dialog="true"
+                select-columns="true" show-csv-button="true">
+            <field name="parameterId"><default-field><hidden/></default-field></field>
+            <field name="text">
+                <header-field title="Code, name, alias or description">
+                    <text-line size="20"/>
+                </header-field>
+            </field>
+            <field name="parameterTypeEnumId">
+                <header-field title="Type">
+                    <drop-down allow-empty="true">
+                        <dynamic-options transition="choices" server-search="true" min-length="0"
+                                parameter-map="{choice:'parameterTypes', selected:parameterTypeEnumId}"/>
+                    </drop-down>
+                </header-field>
+            </field>
+            <field name="purposeEnumId">
+                <header-field title="Purpose">
+                    <drop-down allow-empty="true">
+                        <dynamic-options transition="choices" server-search="true" min-length="0"
+                                parameter-map="{choice:'parameterPurposes', selected:purposeEnumId}"/>
+                    </drop-down>
+                </header-field>
+            </field>
+            <field name="groupEnumId">
+                <header-field title="Group">
+                    <drop-down allow-empty="true">
+                        <dynamic-options transition="choices" server-search="true" min-length="0"
+                                parameter-map="{choice:'parameterGroups', selected:groupEnumId}"/>
+                    </drop-down>
+                </header-field>
+            </field>
+            <field name="classEnumId">
+                <header-field title="Class">
+                    <drop-down allow-empty="true">
+                        <dynamic-options transition="choices" server-search="true" min-length="0"
+                                parameter-map="{choice:'parameterClasses', selected:classEnumId}"/>
+                    </drop-down>
+                </header-field>
+            </field>
+            <field name="permissionEnumId">
+                <header-field title="Permission">
+                    <drop-down allow-empty="true">
+                        <dynamic-options transition="choices" server-search="true" min-length="0"
+                                parameter-map="{choice:'parameterPermissions', selected:permissionEnumId}"/>
+                    </drop-down>
+                </header-field>
+            </field>
+            <field name="deviceName">
+                <conditional-field condition="withDevice" title="Device">
+                    <display/>
+                </conditional-field>
+                <default-field title="Device">
+                    <ignored/>
+                </default-field>
+            </field>
+            <field name="parameterCode"><default-field title="Code"><display/></default-field></field>
+            <field name="parameterName"><default-field title="Name"><display/></default-field></field>
+            <field name="parameterAlias"><default-field title="Alias"><display/></default-field></field>
+            <field name="parameterIdText"><default-field title="Parameter"><display text="${parameterId}"/></default-field></field>
+            <field name="parameterDefId"><default-field title="Definition"><display/></default-field></field>
+            <field name="parentParameterDefId"><default-field title="Parent definition"><display/></default-field></field>
+            <field name="typeText"><default-field title="Type"><display/></default-field></field>
+            <field name="purposeText"><default-field title="Purpose"><display/></default-field></field>
+            <field name="groupText"><default-field title="Group"><display/></default-field></field>
+            <field name="classText"><default-field title="Class"><display/></default-field></field>
+            <field name="permissionText"><default-field title="Permission"><display/></default-field></field>
+            <field name="uomTypeText"><default-field title="Unit type"><display/></default-field></field>
+            <field name="uomText"><default-field title="Unit"><display/></default-field></field>
+            <field name="isRequired"><default-field title="Required"><display/></default-field></field>
+            <field name="hasValue"><default-field title="Has value"><display/></default-field></field>
+            <field name="priority" align="right"><default-field title="Priority"><display/></default-field></field>
+            <field name="sequenceNum" align="right">
+                <conditional-field condition="can.edit" title="Sequence">
+                    <text-line size="5"/>
+                </conditional-field>
+                <default-field title="Sequence">
+                    <display/>
+                </default-field>
+            </field>
+            <field name="minText" align="right"><default-field title="Min"><display/></default-field></field>
+            <field name="maxText" align="right"><default-field title="Max"><display/></default-field></field>
+            <field name="defaultText" align="right"><default-field title="Default"><display/></default-field></field>
+            <!-- one value field by the parameter's type: a number, or a text -->
+            <field name="numericValue" align="right">
+                <conditional-field condition="can.edit &amp;&amp; isNumeric" title="Value">
+                    <text-line size="12"/>
+                </conditional-field>
+                <conditional-field condition="!can.edit" title="Value">
+                    <display text="${valueText || ''}"/>
+                </conditional-field>
+                <default-field title="Value">
+                    <ignored/>
+                </default-field>
+            </field>
+            <field name="symbolicValue">
+                <conditional-field condition="can.edit &amp;&amp; !isNumeric" title="">
+                    <text-line size="18"/>
+                </conditional-field>
+                <default-field title="">
+                    <ignored/>
+                </default-field>
+            </field>
+            <field name="parameterEnumId">
+                <conditional-field condition="can.edit" title="Enumeration value">
+                    <text-line size="16"/>
+                </conditional-field>
+                <default-field title="Enumeration value">
+                    <display text="${enumText || ''}"/>
+                </default-field>
+            </field>
+            <field name="descriptionText"><default-field title="Description"><display text="${description || ''}"/></default-field></field>
+            <field name="externalId"><default-field title="External id"><display/></default-field></field>
+            <field name="userId"><default-field title="User"><display/></default-field></field>
+            <field name="submitButton">
+                <conditional-field condition="can.edit" title="">
+                    <submit text="Save"/>
+                </conditional-field>
+            </field>
+            <columns>
+                <column><field-ref name="deviceName"/><field-ref name="parameterCode"/></column>
+                <column><field-ref name="parameterName"/><field-ref name="parameterAlias"/></column>
+                <column><field-ref name="parameterIdText"/><field-ref name="parameterDefId"/></column>
+                <column><field-ref name="parentParameterDefId"/></column>
+                <column><field-ref name="typeText"/><field-ref name="purposeText"/></column>
+                <column><field-ref name="groupText"/><field-ref name="classText"/><field-ref name="permissionText"/></column>
+                <column><field-ref name="uomTypeText"/><field-ref name="uomText"/></column>
+                <column><field-ref name="isRequired"/><field-ref name="hasValue"/></column>
+                <column><field-ref name="priority"/><field-ref name="sequenceNum"/></column>
+                <column><field-ref name="minText"/><field-ref name="maxText"/><field-ref name="defaultText"/></column>
+                <column><field-ref name="numericValue"/><field-ref name="symbolicValue"/><field-ref name="parameterEnumId"/></column>
+                <column><field-ref name="descriptionText"/></column>
+                <column><field-ref name="externalId"/><field-ref name="userId"/></column>
+                <column><field-ref name="submitButton"/></column>
+            </columns>
+            <columns type="mobile">
+                <column><field-ref name="parameterName"/><field-ref name="parameterCode"/></column>
+                <column><field-ref name="numericValue"/><field-ref name="symbolicValue"/><field-ref name="submitButton"/></column>
+            </columns>
+        </form-list>
+        <label text="No parameters." type="p" style="m-muted" condition="!parameterList.length"/>
+    </widgets>
+</screen>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- ProcessDetail › Overview (plan/design-devices.md §3.6): the process's fields and the devices running it (get#Process). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Overview" default-menu-index="1">
+    <parameter name="deviceRuleSetId" required="true"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Process" out-map="overview" transaction="force-new"
+                ignore-error="true" in-map="{deviceRuleSetId:deviceRuleSetId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="process" from="overview?.process || {}"/>
+        <set field="runningList" from="overview?.runningList || []"/>
+    </actions>
+    <widgets>
+        <container-row>
+            <row-col md="6">
+                <container-box>
+                    <box-header title="Process"/>
+                    <box-body>
+                        <form-single name="ProcessFields" map="process">
+                        <field name="purposeText"><default-field title="Purpose"><display/></default-field></field>
+                        <field name="parentText"><default-field title="Part of"><display/></default-field></field>
+                        <field name="sequenceNum"><default-field title="Sequence"><display/></default-field></field>
+                        <field name="fromDateText"><default-field title="From"><display/></default-field></field>
+                        <field name="thruDateText"><default-field title="Through"><display/></default-field></field>
+                        <field name="description"><default-field title="Description"><display/></default-field></field>
+                            <field-layout>
+                                <field-row><field-ref name="purposeText"/><field-ref name="parentText"/></field-row>
+                                <field-row><field-ref name="sequenceNum"/></field-row>
+                                <field-row><field-ref name="fromDateText"/><field-ref name="thruDateText"/></field-row>
+                                <field-ref name="description"/>
+                            </field-layout>
+                        </form-single>
+                    </box-body>
+                </container-box>
+            </row-col>
+            <row-col md="6">
+                <container-box>
+                    <box-header title="Running on"/>
+                    <box-body-nopad>
+                        <form-list name="RunningRows" list="runningList" skip-form="true" skip-header="true" paginate="false">
+                            <field name="name">
+                                <default-field title="Device">
+                                    <link url="${sharedLinks['Devices/DeviceDetail']}" text="${name}" link-type="anchor"
+                                            parameter-map="{deviceId:deviceId}"/>
+                                </default-field>
+                            </field>
+                            <field name="taskText"><default-field title="Task"><display/></default-field></field>
+                            <columns type="mobile">
+                                <column><field-ref name="name"/></column>
+                                <column><field-ref name="taskText"/></column>
+                            </columns>
+                        </form-list>
+                        <label text="No device runs this process." type="p" style="m-muted q-pa-md" condition="!runningList.length"/>
+                    </box-body-nopad>
+                </container-box>
+            </row-col>
+        </container-row>
+    </widgets>
+</screen>

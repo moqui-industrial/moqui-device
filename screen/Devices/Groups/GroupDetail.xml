@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Groups › GroupDetail (plan/design-devices.md §3.4; style-guide §3.3 Detail): one group, with the device detail's
+    record header (DevicesParts.xml DeviceHeader), whose requests run through the group's controller. The tabs: the device's
+    Overview, Parameters (the group's and its members') and Content, and Members (GroupDetail/Members.xml). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Group" default-menu-include="false">
+    <parameter name="deviceId" required="true"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="applyTask" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="exportProcess" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="syncParameters" location="component://moqui-device/template/DevicesParts.xml"/>
+    <subscreens default-item="Overview">
+        <subscreens-item name="Overview" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Overview.xml"
+                menu-title="Overview" menu-index="1"/>
+        <subscreens-item name="Parameters" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Parameters.xml"
+                menu-title="Parameters" menu-index="3"/>
+        <subscreens-item name="Content" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Content.xml"
+                menu-title="Content" menu-index="4"/>
+    </subscreens>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Device" out-map="deviceAnswer" transaction="force-new"
+                ignore-error="true" in-map="{deviceId:deviceId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="recordFound" from="!!deviceAnswer?.device &amp;&amp; deviceAnswer.device.isGroup === (recordKind === 'group')"/>
+        <set field="recordWhat" from="recordKind === 'group' ? 'Device group' : 'Device'"/>
+        <set field="recordId" from="deviceId"/>
+        <set field="backLink" from="sharedLinks[recordKind === 'group' ? 'Groups/Find' : 'Devices/Find']"/>
+        <set field="backText" from="recordKind === 'group' ? 'All device groups' : 'All devices'"/>
+    </actions>
+    <widgets>
+        <section name="DeviceNotFound" condition="!recordFound">
+            <widgets>
+                <section-include name="NotAvailable" location="component://moqui-device/template/DevicesParts.xml"/>
+            </widgets>
+        </section>
+        <section name="DeviceFound" condition="recordFound">
+            <widgets>
+                <section-include name="DeviceHeader" location="component://moqui-device/template/DevicesParts.xml"/>
+                <subscreens-panel id="GroupTabs" type="tab"/>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

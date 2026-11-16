@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Processes › Find (plan/design-devices.md §3.6; style-guide §3.2 List): the processes found by text (id, name,
+    description; ignoring case) and purpose, paged by find#Processes; New process for an engineer (store#Process, which opens the
+    new process). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Processes" default-menu-index="1">
+    <parameter name="text"/>
+    <parameter name="purposeEnumId"/>
+    <parameter name="parentRuleSetId"/>
+    <parameter name="pageIndex"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="storeProcess" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <set field="can" from="devices.capabilities"/>
+        <if condition="can.read">
+            <service-call name="moqui.device.DeviceAppServices.find#Processes" out-map="context"
+                    in-map="{text:text, purposeEnumId:purposeEnumId, parentRuleSetId:parentRuleSetId, pageIndex:pageIndex}"/>
+        </if>
+        <set field="processList" from="processList || []"/>
+        <set field="newProcess" from="{}"/>
+    </actions>
+    <widgets>
+        <label text="You do not read devices." type="p" style="m-muted" condition="!can.read"/>
+        <section name="ProcessRegister" condition="can.read">
+            <widgets>
+                <container style="row items-center q-col-gutter-sm">
+                    <container style="col">
+                        <label text="Processes" type="h5"/>
+                    </container>
+                    <container style="col-auto">
+                        <container-dialog id="NewProcessDialog" button-text="New process" title="New process" icon="sym_o_add"
+                                width="640" type="primary" condition="can.edit">
+                            <form-single name="NewProcess" transition="storeProcess" map="newProcess">
+                                    <field name="deviceRuleSetId"><default-field><hidden/></default-field></field>
+                                    <field name="ruleSetName"><default-field title="Name" required="true"><text-line size="40"/></default-field></field>
+                                    <field name="purposeEnumId">
+                            <default-field title="Purpose">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'processPurposes', selected:purposeEnumId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="parentRuleSetId">
+                            <default-field title="Part of">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'processes', selected:parentRuleSetId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="sequenceNum"><default-field title="Sequence"><text-line size="6"/></default-field></field>
+                                    <field name="fromDate"><default-field title="From"><date-time/></default-field></field>
+                                    <field name="thruDate"><default-field title="Through"><date-time/></default-field></field>
+                                    <field name="description"><default-field title="Description"><text-area rows="3"/></default-field></field>
+                                    <field name="submitButton"><default-field title=""><submit text="Create process" type="primary"/></default-field></field>
+                                    <field-layout>
+                                        <field-row><field-ref name="ruleSetName"/><field-ref name="purposeEnumId"/></field-row>
+                                        <field-row><field-ref name="parentRuleSetId"/><field-ref name="sequenceNum"/></field-row>
+                                        <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
+                                        <field-ref name="description"/>
+                                        <field-ref name="submitButton"/>
+                                    </field-layout>
+                                </form-single>
+                        </container-dialog>
+                    </container>
+                </container>
+                <form-list name="ProcessRows" list="processList" skip-form="true" paginate="true" header-dialog="true" select-columns="true">
+                    <field name="text">
+                        <header-field title="Id, name or description">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="purposeEnumId">
+                        <header-field title="Purpose">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'processPurposes', selected:purposeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="parentRuleSetId">
+                        <header-field title="Part of">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'processes', selected:parentRuleSetId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="name">
+                        <default-field title="Process">
+                            <link url="${sharedLinks['Processes/ProcessDetail']}" text="${name}" link-type="anchor"
+                                    parameter-map="{deviceRuleSetId:deviceRuleSetId}"/>
+                        </default-field>
+                    </field>
+                    <field name="deviceRuleSetId"><default-field title="Id"><display/></default-field></field>
+                    <field name="purposeText"><default-field title="Purpose"><display/></default-field></field>
+                    <field name="parentText"><default-field title="Part of"><display/></default-field></field>
+                    <field name="sequenceNum" align="right"><default-field title="Sequence"><display/></default-field></field>
+                    <field name="fromDateText"><default-field title="From"><display/></default-field></field>
+                    <field name="thruDateText"><default-field title="Through"><display/></default-field></field>
+                    <field name="description"><default-field title="Description"><display/></default-field></field>
+                    <columns type="mobile">
+                        <column><field-ref name="name"/><field-ref name="deviceRuleSetId"/></column>
+                        <column><field-ref name="purposeText"/></column>
+                    </columns>
+                </form-list>
+                <label text="No process matches.${can.edit ? ' Search by another name, or create a process.' : ' Search by another name.'}"
+                        type="p" style="m-muted" condition="!processList.length"/>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

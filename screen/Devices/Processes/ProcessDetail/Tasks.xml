@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- ProcessDetail › Tasks (plan/design-devices.md §3.6): the process's tasks by priority (get#Process), each with its kind, the
+    device it is limited to, its configuration (linked) and dates; New task, Edit and Delete (confirmed, refused for a task a
+    device runs) for an engineer (store#Task, delete#Task). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Tasks" default-menu-index="2">
+    <parameter name="deviceRuleSetId" required="true"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="storeTask" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="deleteTask" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Process" out-map="tasks" transaction="force-new"
+                ignore-error="true" in-map="{deviceRuleSetId:deviceRuleSetId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="taskList" from="tasks?.taskList || []"/>
+        <set field="canEdit" from="!!tasks?.canEdit"/>
+        <set field="newTask" from="{deviceRuleSetId:deviceRuleSetId, priority:10}"/>
+    </actions>
+    <widgets>
+        <container-box>
+            <box-header title="Tasks"/>
+            <box-toolbar>
+                <container-dialog id="NewTaskDialog" button-text="New task" icon="sym_o_add" title="New task" width="640" condition="canEdit">
+                    <form-single name="NewTask" transition="storeTask" map="newTask">
+                                    <field name="deviceRuleSetId"><default-field><hidden/></default-field></field>
+                                    <field name="deviceRuleId"><default-field><hidden/></default-field></field>
+                                    <field name="ruleName"><default-field title="Name" required="true"><text-line size="40"/></default-field></field>
+                                    <field name="ruleTypeEnumId">
+                            <default-field title="Kind">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'taskTypes', selected:ruleTypeEnumId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="deviceId">
+                            <default-field title="Only on device">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'devices', selected:deviceId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="deviceConfigId">
+                            <default-field title="Configuration">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'configs', selected:deviceConfigId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="priority"><default-field title="Priority"><text-line size="6"/></default-field></field>
+                                    <field name="fromDate"><default-field title="From"><date-time/></default-field></field>
+                                    <field name="thruDate"><default-field title="Through"><date-time/></default-field></field>
+                                    <field name="description"><default-field title="Description"><text-area rows="3"/></default-field></field>
+                                    <field name="submitButton"><default-field title=""><submit text="Add task" type="primary"/></default-field></field>
+                                    <field-layout>
+                                        <field-row><field-ref name="ruleName"/><field-ref name="ruleTypeEnumId"/></field-row>
+                                        <field-row><field-ref name="deviceConfigId"/><field-ref name="deviceId"/></field-row>
+                                        <field-row><field-ref name="priority"/></field-row>
+                                        <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
+                                        <field-ref name="description"/>
+                                        <field-ref name="submitButton"/>
+                                    </field-layout>
+                    </form-single>
+                </container-dialog>
+            </box-toolbar>
+            <box-body-nopad>
+                <form-list name="TaskRows" list="taskList" skip-form="true" paginate="false">
+                    <field name="ruleName"><default-field title="Task"><display/></default-field></field>
+                    <field name="deviceRuleId"><default-field title="Id"><display/></default-field></field>
+                    <field name="priority" align="right"><default-field title="Priority"><display/></default-field></field>
+                    <field name="typeText"><default-field title="Kind"><display/></default-field></field>
+                    <field name="deviceName">
+                        <default-field title="Only on">
+                            <link url="${sharedLinks['Devices/DeviceDetail']}" text="${deviceName}" link-type="anchor"
+                                    parameter-map="{deviceId:deviceId}" condition="deviceId"/>
+                        </default-field>
+                    </field>
+                    <field name="configName">
+                        <default-field title="Configuration">
+                            <link url="${sharedLinks['Configs/ConfigDetail']}" text="${configName}" link-type="anchor"
+                                    parameter-map="{deviceConfigId:deviceConfigId}" condition="deviceConfigId"/>
+                        </default-field>
+                    </field>
+                    <field name="fromDateText"><default-field title="From"><display/></default-field></field>
+                    <field name="thruDateText"><default-field title="Through"><display/></default-field></field>
+                    <field name="description"><default-field title="Description"><display/></default-field></field>
+                    <field name="actions" align="right">
+                        <default-field title="">
+                            <container-dialog id="EditTask_${deviceRuleId}" button-text="Edit" title="Edit ${ruleName}" width="640" condition="canEdit">
+                                <form-single name="EditTask" transition="storeTask">
+                                    <field name="deviceRuleSetId"><default-field><hidden/></default-field></field>
+                                    <field name="deviceRuleId"><default-field><hidden/></default-field></field>
+                                    <field name="ruleName"><default-field title="Name" required="true"><text-line size="40"/></default-field></field>
+                                    <field name="ruleTypeEnumId">
+                            <default-field title="Kind">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'taskTypes', selected:ruleTypeEnumId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="deviceId">
+                            <default-field title="Only on device">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'devices', selected:deviceId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="deviceConfigId">
+                            <default-field title="Configuration">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'configs', selected:deviceConfigId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="priority"><default-field title="Priority"><text-line size="6"/></default-field></field>
+                                    <field name="fromDate"><default-field title="From"><date-time/></default-field></field>
+                                    <field name="thruDate"><default-field title="Through"><date-time/></default-field></field>
+                                    <field name="description"><default-field title="Description"><text-area rows="3"/></default-field></field>
+                                    <field name="submitButton"><default-field title=""><submit text="Save" type="primary"/></default-field></field>
+                                    <field-layout>
+                                        <field-row><field-ref name="ruleName"/><field-ref name="ruleTypeEnumId"/></field-row>
+                                        <field-row><field-ref name="deviceConfigId"/><field-ref name="deviceId"/></field-row>
+                                        <field-row><field-ref name="priority"/></field-row>
+                                        <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
+                                        <field-ref name="description"/>
+                                        <field-ref name="submitButton"/>
+                                    </field-layout>
+                                </form-single>
+                            </container-dialog>
+                            <link url="deleteTask" text="Delete" icon="sym_o_delete" link-type="hidden-form-link" btn-type="danger"
+                                    parameter-map="{deviceRuleSetId:deviceRuleSetId, deviceRuleId:deviceRuleId}" condition="canEdit"
+                                    confirmation="Delete the task ${ruleName}?"/>
+                        </default-field>
+                    </field>
+                    <columns type="mobile">
+                        <column><field-ref name="ruleName"/><field-ref name="configName"/></column>
+                        <column><field-ref name="priority"/><field-ref name="actions"/></column>
+                    </columns>
+                </form-list>
+                <label text="This process has no tasks yet.${canEdit ? ' Add the first with New task.' : ''}" type="p"
+                        style="m-muted q-pa-md" condition="!taskList.length"/>
+            </box-body-nopad>
+        </container-box>
+    </widgets>
+</screen>

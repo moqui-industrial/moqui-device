@@ -23,6 +23,16 @@ only with `gateway_sftp_test` and a runner that installs the framework's SFTP
 client (`moqui test` does not). The requests on the drivers are tested by
 moqui-device-gateway, whose `scripts/run-driver-tests.py` also runs this suite.
 
+The Devices app (`/qapps/Devices`) has its regression specs in `Devices/`
+(`DevicesAccess`, `DevicesRules`, `DevicesScreens`), its golden-path walk in
+`client/Devices/DevicesWalk` and its terminal sweep in `acceptance/Devices/DevicesTui`:
+
+```bash
+./moq test --debug moqui-device --spec DevicesAccess
+./moq test-client moqui-device --debug --serve
+./moq accept moqui-device --spec DevicesTui --debug
+```
+
 Optional Mantle WorkEffort/Measurement records are in `test/mantle/MantleTestData.xml`,
 outside automatic data discovery. Tests needing that telemetry require installing
 mr-mantle and temporarily adding `<depends-on name="mr-mantle"/>` to the test

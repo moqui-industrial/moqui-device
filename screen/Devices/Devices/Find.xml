@@ -1,0 +1,491 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Devices › Find and Groups › Find (plan/design-devices.md §3.2, §3.4; style-guide §3.2 List): the devices or the
+    groups (recordKind) found by text (id, name, serial, vendor, model, location; ignoring case), type, purpose and status, paged
+    by find#Devices; each row opens its detail. A group's row shows its member count. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Devices" default-menu-index="1">
+    <parameter name="text"/>
+    <parameter name="deviceTypeEnumId"/>
+    <parameter name="purposeEnumId"/>
+    <parameter name="statusId"/>
+    <parameter name="parentDeviceId"/>
+    <parameter name="controlMethodEnumId"/>
+    <parameter name="operatingModeEnumId"/>
+    <parameter name="deviceRuleSetId"/>
+    <parameter name="deviceRuleId"/>
+    <parameter name="approximatedFunctionId"/>
+    <parameter name="isMulticore"/>
+    <parameter name="vendorName"/>
+    <parameter name="modelName"/>
+    <parameter name="serialNumber"/>
+    <parameter name="location"/>
+    <parameter name="firmwareVersion"/>
+    <parameter name="softwareApplication"/>
+    <parameter name="operatingSystem"/>
+    <parameter name="statusTypeId"/>
+    <parameter name="statusFlowId"/>
+    <parameter name="coordinateSystemId"/>
+    <parameter name="transformationId"/>
+    <parameter name="geoPointId"/>
+    <parameter name="version"/>
+    <parameter name="hardwareVersion"/>
+    <parameter name="uuid"/>
+    <parameter name="hash"/>
+    <parameter name="description"/>
+    <parameter name="cycleTimeFrom"/>
+    <parameter name="cycleTimeThru"/>
+    <parameter name="fromDateFrom"/>
+    <parameter name="fromDateThru"/>
+    <parameter name="thruDateFrom"/>
+    <parameter name="thruDateThru"/>
+    <parameter name="orderByField"/>
+    <parameter name="pageIndex"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <set field="can" from="devices.capabilities"/>
+        <set field="groups" from="recordKind === 'group'"/>
+        <set field="detailLink" from="sharedLinks[groups ? 'Groups/GroupDetail' : 'Devices/DeviceDetail']"/>
+        <if condition="can.read">
+            <service-call name="moqui.device.DeviceAppServices.find#Devices" out-map="context"
+                    in-map="{kind:recordKind, text:text, deviceTypeEnumId:deviceTypeEnumId, purposeEnumId:purposeEnumId,
+                        statusId:statusId, parentDeviceId:parentDeviceId, controlMethodEnumId:controlMethodEnumId,
+                        operatingModeEnumId:operatingModeEnumId, deviceRuleSetId:deviceRuleSetId, deviceRuleId:deviceRuleId,
+                        approximatedFunctionId:approximatedFunctionId, isMulticore:isMulticore, vendorName:vendorName, modelName:modelName,
+                        serialNumber:serialNumber, location:location, firmwareVersion:firmwareVersion,
+                        softwareApplication:softwareApplication, operatingSystem:operatingSystem, statusTypeId:statusTypeId,
+                        statusFlowId:statusFlowId, coordinateSystemId:coordinateSystemId, transformationId:transformationId,
+                        geoPointId:geoPointId, version:version, hardwareVersion:hardwareVersion, uuid:uuid, hash:hash,
+                        description:description, cycleTimeFrom:cycleTimeFrom, cycleTimeThru:cycleTimeThru, fromDateFrom:fromDateFrom,
+                        fromDateThru:fromDateThru, thruDateFrom:thruDateFrom, thruDateThru:thruDateThru, orderByField:orderByField,
+                        pageIndex:pageIndex}"/>
+        </if>
+        <set field="deviceList" from="deviceList || []"/>
+    </actions>
+    <widgets>
+        <label text="You do not read devices." type="p" style="m-muted" condition="!can.read"/>
+        <section name="DeviceRegister" condition="can.read">
+            <widgets>
+                <label text="${groups ? 'Device groups' : 'Devices'}" type="h5"/>
+                <form-list name="DeviceRows" list="deviceList" skip-form="true" paginate="true" header-dialog="true" select-columns="true">
+                    <field name="text">
+                        <header-field title="Id, name, serial, vendor or model">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="deviceTypeEnumId">
+                        <header-field title="Type">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'deviceTypes', selected:deviceTypeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="purposeEnumId">
+                        <header-field title="Purpose">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'devicePurposes', selected:purposeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="statusId">
+                        <header-field title="Status">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'deviceStatuses', selected:statusId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="parentDeviceId">
+                        <header-field title="Part of">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'devices', selected:parentDeviceId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="controlMethodEnumId">
+                        <header-field title="Control method">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'controlMethods', selected:controlMethodEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="operatingModeEnumId">
+                        <header-field title="Operating mode">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'operatingModes', selected:operatingModeEnumId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="deviceRuleSetId">
+                        <header-field title="Process">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'processes', selected:deviceRuleSetId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="deviceRuleId">
+                        <header-field title="Task">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'tasks', selected:deviceRuleId, choiceDeviceRuleSetId:deviceRuleSetId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="approximatedFunctionId">
+                        <header-field title="Trajectory">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'trajectories', selected:approximatedFunctionId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="isMulticore">
+                        <header-field title="Multicore">
+                            <drop-down allow-empty="true">
+                                <option key="Y" text="Yes"/>
+                                <option key="N" text="No"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="vendorName">
+                        <header-field title="Vendor">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="modelName">
+                        <header-field title="Model">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="serialNumber">
+                        <header-field title="Serial">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="location">
+                        <header-field title="Location">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="firmwareVersion">
+                        <header-field title="Firmware version">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="softwareApplication">
+                        <header-field title="Application">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="operatingSystem">
+                        <header-field title="Operating system">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="statusTypeId">
+                        <header-field title="Status type">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'statusTypes', selected:statusTypeId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="statusFlowId">
+                        <header-field title="Status flow">
+                            <drop-down allow-empty="true">
+                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                        parameter-map="{choice:'statusFlows', selected:statusFlowId}"/>
+                            </drop-down>
+                        </header-field>
+                    </field>
+                    <field name="version">
+                        <header-field title="Version">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="hardwareVersion">
+                        <header-field title="Hardware version">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="uuid">
+                        <header-field title="UUID">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="hash">
+                        <header-field title="Hash">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="coordinateSystemId">
+                        <header-field title="Coordinate system">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="transformationId">
+                        <header-field title="Transformation">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="geoPointId">
+                        <header-field title="Geo point">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="description">
+                        <header-field title="Description">
+                            <text-line size="20"/>
+                        </header-field>
+                    </field>
+                    <field name="cycleTimeFrom">
+                        <header-field title="Cycle time from">
+                            <text-line size="8"/>
+                        </header-field>
+                    </field>
+                    <field name="cycleTimeThru">
+                        <header-field title="Cycle time through">
+                            <text-line size="8"/>
+                        </header-field>
+                    </field>
+                    <field name="fromDateFrom">
+                        <header-field title="From, after">
+                            <date-time type="date"/>
+                        </header-field>
+                    </field>
+                    <field name="fromDateThru">
+                        <header-field title="From, before">
+                            <date-time type="date"/>
+                        </header-field>
+                    </field>
+                    <field name="thruDateFrom">
+                        <header-field title="Through, after">
+                            <date-time type="date"/>
+                        </header-field>
+                    </field>
+                    <field name="thruDateThru">
+                        <header-field title="Through, before">
+                            <date-time type="date"/>
+                        </header-field>
+                    </field>
+                    <field name="name">
+                        <header-field show-order-by="case-insensitive"/>
+                        <default-field title="${groups ? 'Group' : 'Device'}">
+                            <link url="${detailLink}" text="${name}" link-type="anchor" parameter-map="{deviceId:deviceId}"/>
+                        </default-field>
+                    </field>
+                    <field name="deviceId">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Id">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="parentText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Part of">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="typeText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Type">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="purposeText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Purpose">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="controlMethodText">
+                        <default-field title="Control method">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="operatingModeText">
+                        <default-field title="Operating mode">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="statusTypeText">
+                        <default-field title="Status type">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="statusFlowText">
+                        <default-field title="Status flow">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="statusText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Status">
+                            <render-mode>
+                                <text type="qvt"><![CDATA[${statusText ? '<q-chip dense square class="q-ma-none m-tonal text-' + statusColor + '">' + WebUtilities.encodeHtml(statusText) + '</q-chip>' : ''}]]></text>
+                                <text type="tui"><![CDATA[${JSON.stringify({t: "text", text: statusText || ""})}]]></text>
+                                <text type="html">${statusText || ''}</text>
+                            </render-mode>
+                        </default-field>
+                    </field>
+                    <field name="processText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Process">
+                            <link url="${sharedLinks['Processes/ProcessDetail']}" text="${processText}" link-type="anchor" parameter-map="{deviceRuleSetId:deviceRuleSetId}" condition="deviceRuleSetId"/>
+                        </default-field>
+                    </field>
+                    <field name="taskText">
+                        <default-field title="Task">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="memberCount" align="right">
+                        <conditional-field condition="groups" title="Members">
+                            <display/>
+                        </conditional-field>
+                        <default-field title="">
+                            <ignored/>
+                        </default-field>
+                    </field>
+                    <field name="vendorText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Vendor">
+                            <display text="${vendorName || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="modelText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Model">
+                            <display text="${modelName || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="versionText">
+                        <default-field title="Version">
+                            <display text="${version || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="hardwareText">
+                        <default-field title="Hardware version">
+                            <display text="${hardwareVersion || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="firmwareText">
+                        <default-field title="Firmware version">
+                            <display text="${firmwareVersion || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="osText">
+                        <default-field title="Operating system">
+                            <display text="${operatingSystem || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="applicationText">
+                        <default-field title="Application">
+                            <display text="${softwareApplication || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="cycleTimeText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Cycle time">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="multicoreText">
+                        <default-field title="Multicore">
+                            <display text="${isMulticore || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="serialText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Serial">
+                            <display text="${serialNumber || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="uuidText">
+                        <default-field title="UUID">
+                            <display text="${uuid || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="hashText">
+                        <default-field title="Hash">
+                            <display text="${hash || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="locationText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Location">
+                            <display text="${location || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="geoPointIdText">
+                        <default-field title="Geo point">
+                            <display text="${geoPointId || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="coordinateSystemIdText">
+                        <default-field title="Coordinate system">
+                            <display text="${coordinateSystemId || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="transformationIdText">
+                        <default-field title="Transformation">
+                            <display text="${transformationId || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="trajectoryText">
+                        <default-field title="Trajectory">
+                            <display text="${approximatedFunctionId || ''}"/>
+                        </default-field>
+                    </field>
+                    <field name="fromDateText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="From">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="thruDateText">
+                        <header-field show-order-by="true"/>
+                        <default-field title="Through">
+                            <display/>
+                        </default-field>
+                    </field>
+                    <field name="descriptionText">
+                        <default-field title="Description">
+                            <display text="${description || ''}"/>
+                        </default-field>
+                    </field>
+                    <columns type="mobile">
+                        <column>
+                            <field-ref name="name"/>
+                            <field-ref name="deviceId"/>
+                        </column>
+                        <column>
+                            <field-ref name="statusText"/>
+                            <field-ref name="typeText"/>
+                        </column>
+                    </columns>
+                </form-list>
+                <label text="${groups ? 'No group matches. Search by another name.' : 'No device matches. Search by another name, serial or model.'}"
+                        type="p" style="m-muted" condition="!deviceList.length"/>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

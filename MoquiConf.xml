@@ -21,4 +21,10 @@
         <tool-factory class="moqui_device::TrajectoryGeneratorFactory" init-priority="25"/>
         <tool-factory class="moqui_device::DeviceSubscriptionsFactory" init-priority="25"/>
     </tools>
+    <!-- IronStone Devices (plan/design-devices.md): an app beside the BOSS apps, /qapps/Devices -->
+    <screen-facade>
+        <screen location="component://webroot/screen/webroot/apps.xml">
+            <subscreens-item name="Devices" menu-title="Devices" menu-index="45" location="component://moqui-device/screen/Devices.xml"/>
+        </screen>
+    </screen-facade>
 </moqui-conf>

@@ -1,0 +1,533 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- The services of the Devices app (plan/design-devices.md §4). The logic is DevicesApp.js: each operation checks the user's
+    permission first (DEVICE_VIEW, DEVICE_EDIT, DEVICE_OPERATE; reason code DEVICE_PERMISSION), then reads and writes without
+    artifact authorization, since the app's grant (DevicesAppData.xml) opens navigation only. -->
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+
+    <service verb="get" noun="SharedContext" allow-remote="false" read-only="true">
+        <description>The capabilities of the user in the Devices app (read: DEVICE_VIEW; edit: DEVICE_EDIT, operate: DEVICE_OPERATE, each with DEVICE_VIEW) and the links of its screens. Never refuses.</description>
+        <in-parameters>
+            <parameter name="appRoot"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="capabilities" type="Map"/>
+            <parameter name="sharedLinks" type="Map"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('sharedContext', context)"/>
+            <set field="capabilities" from="answer.capabilities"/>
+            <set field="sharedLinks" from="answer.sharedLinks"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="Home" allow-remote="false" read-only="true">
+        <description>Home's counters and the group members out of service (Down, Fault, Error), ten at most. Refuses without DEVICE_VIEW.</description>
+        <out-parameters>
+            <parameter name="counts" type="Map"/>
+            <parameter name="membersDown" type="List"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('home', context)"/>
+            <set field="counts" from="answer.counts"/>
+            <set field="membersDown" from="answer.membersDown"/>
+        </actions>
+    </service>
+
+    <service verb="find" noun="Devices" allow-remote="false" read-only="true">
+        <description>Devices (kind device: a PhysicalDevice) or groups (kind group: a DeviceGroup), searched by text in the query ignoring case, by parent, type, purpose, control method, operating mode, status type, status flow, status, process, task, trajectory, coordinate system, transformation, geo point and multicore (equal) and by vendor, model, versions, application, serial, UUID, hash, location and description (ignoring case), between cycleTimeFrom and Thru and the from and thru dates' ranges, sorted by orderByField among its columns, paged, with names, status chips and the current process and task. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="kind"/>
+            <parameter name="text"/>
+            <parameter name="deviceTypeEnumId"/>
+            <parameter name="purposeEnumId"/>
+            <parameter name="statusId"/>
+            <parameter name="parentDeviceId"/>
+            <parameter name="controlMethodEnumId"/>
+            <parameter name="operatingModeEnumId"/>
+            <parameter name="deviceRuleSetId"/>
+            <parameter name="deviceRuleId"/>
+            <parameter name="approximatedFunctionId"/>
+            <parameter name="isMulticore"/>
+            <parameter name="vendorName"/>
+            <parameter name="modelName"/>
+            <parameter name="serialNumber"/>
+            <parameter name="location"/>
+            <parameter name="firmwareVersion"/>
+            <parameter name="softwareApplication"/>
+            <parameter name="operatingSystem"/>
+            <parameter name="statusTypeId"/>
+            <parameter name="statusFlowId"/>
+            <parameter name="coordinateSystemId"/>
+            <parameter name="transformationId"/>
+            <parameter name="geoPointId"/>
+            <parameter name="version"/>
+            <parameter name="hardwareVersion"/>
+            <parameter name="uuid"/>
+            <parameter name="hash"/>
+            <parameter name="description"/>
+            <parameter name="cycleTimeFrom"/>
+            <parameter name="cycleTimeThru"/>
+            <parameter name="fromDateFrom" type="Timestamp"/>
+            <parameter name="fromDateThru" type="Timestamp"/>
+            <parameter name="thruDateFrom" type="Timestamp"/>
+            <parameter name="thruDateThru" type="Timestamp"/>
+            <parameter name="orderByField"/>
+            <parameter name="pageIndex" type="Integer"/>
+            <parameter name="pageSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="deviceList" type="List"/>
+            <parameter name="deviceListCount" type="Integer"/>
+            <parameter name="deviceListPageIndex" type="Integer"/>
+            <parameter name="deviceListPageSize" type="Integer"/>
+            <parameter name="deviceListPageMaxIndex" type="Integer"/>
+            <parameter name="deviceListPageRangeLow" type="Integer"/>
+            <parameter name="deviceListPageRangeHigh" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('findDevices', context)"/>
+            <set field="deviceList" from="answer.deviceList"/>
+            <set field="deviceListCount" from="answer.deviceListCount"/>
+            <set field="deviceListPageIndex" from="answer.deviceListPageIndex"/>
+            <set field="deviceListPageSize" from="answer.deviceListPageSize"/>
+            <set field="deviceListPageMaxIndex" from="answer.deviceListPageMaxIndex"/>
+            <set field="deviceListPageRangeLow" from="answer.deviceListPageRangeLow"/>
+            <set field="deviceListPageRangeHigh" from="answer.deviceListPageRangeHigh"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="Device" allow-remote="false" read-only="true">
+        <description>One device or group: its header and identity, process and task, the groups of a device, the controller of a group, and the requests the user may run on it. Refuses without DEVICE_VIEW; DEVICE_UNAVAILABLE when it does not exist.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="device" type="Map"/>
+            <parameter name="groups" type="List"/>
+            <parameter name="requests" type="Map"/>
+            <parameter name="actions" type="Map"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('getDevice', context)"/>
+            <set field="device" from="answer.device"/>
+            <set field="groups" from="answer.groups"/>
+            <set field="requests" from="answer.requests"/>
+            <set field="actions" from="answer.actions"/>
+        </actions>
+    </service>
+
+    <service verb="find" noun="Members" allow-remote="false" read-only="true">
+        <description>The members of a group, paged, with names, purposes and status chips. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+            <parameter name="purposeEnumId"/>
+            <parameter name="statusId"/>
+            <parameter name="pageIndex" type="Integer"/>
+            <parameter name="pageSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="memberList" type="List"/>
+            <parameter name="memberListCount" type="Integer"/>
+            <parameter name="memberListPageIndex" type="Integer"/>
+            <parameter name="memberListPageSize" type="Integer"/>
+            <parameter name="memberListPageMaxIndex" type="Integer"/>
+            <parameter name="memberListPageRangeLow" type="Integer"/>
+            <parameter name="memberListPageRangeHigh" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('findMembers', context)"/>
+            <set field="memberList" from="answer.memberList"/>
+            <set field="memberListCount" from="answer.memberListCount"/>
+            <set field="memberListPageIndex" from="answer.memberListPageIndex"/>
+            <set field="memberListPageSize" from="answer.memberListPageSize"/>
+            <set field="memberListPageMaxIndex" from="answer.memberListPageMaxIndex"/>
+            <set field="memberListPageRangeLow" from="answer.memberListPageRangeLow"/>
+            <set field="memberListPageRangeHigh" from="answer.memberListPageRangeHigh"/>
+        </actions>
+    </service>
+
+    <service verb="find" noun="Parameters" allow-remote="false" read-only="true">
+        <description>The parameters of a device (deviceId; a group's with those of its members, withDevice true), or of a configuration (deviceConfigId: those of no device), searched by text, paged, with their values as text. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="deviceId"/>
+            <parameter name="deviceConfigId"/>
+            <parameter name="text"/>
+            <parameter name="parameterTypeEnumId"/>
+            <parameter name="purposeEnumId"/>
+            <parameter name="groupEnumId"/>
+            <parameter name="classEnumId"/>
+            <parameter name="permissionEnumId"/>
+            <parameter name="parameterDefId"/>
+            <parameter name="pageIndex" type="Integer"/>
+            <parameter name="pageSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="parameterList" type="List"/>
+            <parameter name="withDevice" type="Boolean"/>
+            <parameter name="parameterListCount" type="Integer"/>
+            <parameter name="parameterListPageIndex" type="Integer"/>
+            <parameter name="parameterListPageSize" type="Integer"/>
+            <parameter name="parameterListPageMaxIndex" type="Integer"/>
+            <parameter name="parameterListPageRangeLow" type="Integer"/>
+            <parameter name="parameterListPageRangeHigh" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('findParameters', context)"/>
+            <set field="parameterList" from="answer.parameterList"/>
+            <set field="withDevice" from="answer.withDevice"/>
+            <set field="parameterListCount" from="answer.parameterListCount"/>
+            <set field="parameterListPageIndex" from="answer.parameterListPageIndex"/>
+            <set field="parameterListPageSize" from="answer.parameterListPageSize"/>
+            <set field="parameterListPageMaxIndex" from="answer.parameterListPageMaxIndex"/>
+            <set field="parameterListPageRangeLow" from="answer.parameterListPageRangeLow"/>
+            <set field="parameterListPageRangeHigh" from="answer.parameterListPageRangeHigh"/>
+        </actions>
+    </service>
+
+    <service verb="update" noun="ParameterValue" allow-remote="false">
+        <description>The value of a parameter of a device or a configuration: numeric (within the minimum and maximum of its definition: DEVICE_VALUE_RANGE), symbolic or enumeration. Refuses without DEVICE_EDIT.</description>
+        <in-parameters>
+            <parameter name="parameterId" required="true"/>
+            <parameter name="numericValue"/>
+            <parameter name="symbolicValue"/>
+            <parameter name="parameterEnumId"/>
+            <parameter name="sequenceNum"/>
+        </in-parameters>
+        <actions>
+            <script>ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('updateParameterValue', context)</script>
+        </actions>
+    </service>
+
+    <service verb="find" noun="Configs" allow-remote="false" read-only="true">
+        <description>Configurations, searched by text and by type and device type, paged. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="text"/>
+            <parameter name="configTypeEnumId"/>
+            <parameter name="deviceTypeEnumId"/>
+            <parameter name="purposeEnumId"/>
+            <parameter name="controlMethodEnumId"/>
+            <parameter name="approximatedFunctionId"/>
+            <parameter name="parentConfigId"/>
+            <parameter name="pageIndex" type="Integer"/>
+            <parameter name="pageSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="configList" type="List"/>
+            <parameter name="configListCount" type="Integer"/>
+            <parameter name="configListPageIndex" type="Integer"/>
+            <parameter name="configListPageSize" type="Integer"/>
+            <parameter name="configListPageMaxIndex" type="Integer"/>
+            <parameter name="configListPageRangeLow" type="Integer"/>
+            <parameter name="configListPageRangeHigh" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('findConfigs', context)"/>
+            <set field="configList" from="answer.configList"/>
+            <set field="configListCount" from="answer.configListCount"/>
+            <set field="configListPageIndex" from="answer.configListPageIndex"/>
+            <set field="configListPageSize" from="answer.configListPageSize"/>
+            <set field="configListPageMaxIndex" from="answer.configListPageMaxIndex"/>
+            <set field="configListPageRangeLow" from="answer.configListPageRangeLow"/>
+            <set field="configListPageRangeHigh" from="answer.configListPageRangeHigh"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="Config" allow-remote="false" read-only="true">
+        <description>One configuration with its texts, and whether the user may edit it. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="deviceConfigId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="config" type="Map"/>
+            <parameter name="canEdit" type="Boolean"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('getConfig', context)"/>
+            <set field="config" from="answer.config"/>
+            <set field="canEdit" from="answer.canEdit"/>
+        </actions>
+    </service>
+
+    <service verb="update" noun="Config" allow-remote="false">
+        <description>A configuration's name, description, control method, trajectory and dates. Refuses without DEVICE_EDIT.</description>
+        <in-parameters>
+            <parameter name="deviceConfigId" required="true"/>
+            <parameter name="configName"/>
+            <parameter name="description"/>
+            <parameter name="controlMethodEnumId"/>
+            <parameter name="approximatedFunctionId"/>
+            <parameter name="fromDate" type="Timestamp"/>
+            <parameter name="thruDate" type="Timestamp"/>
+        </in-parameters>
+        <actions>
+            <script>ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('updateConfig', context)</script>
+        </actions>
+    </service>
+
+    <service verb="find" noun="Processes" allow-remote="false" read-only="true">
+        <description>Processes (DeviceRuleSet), searched by text and purpose, paged. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="text"/>
+            <parameter name="purposeEnumId"/>
+            <parameter name="parentRuleSetId"/>
+            <parameter name="pageIndex" type="Integer"/>
+            <parameter name="pageSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="processList" type="List"/>
+            <parameter name="processListCount" type="Integer"/>
+            <parameter name="processListPageIndex" type="Integer"/>
+            <parameter name="processListPageSize" type="Integer"/>
+            <parameter name="processListPageMaxIndex" type="Integer"/>
+            <parameter name="processListPageRangeLow" type="Integer"/>
+            <parameter name="processListPageRangeHigh" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('findProcesses', context)"/>
+            <set field="processList" from="answer.processList"/>
+            <set field="processListCount" from="answer.processListCount"/>
+            <set field="processListPageIndex" from="answer.processListPageIndex"/>
+            <set field="processListPageSize" from="answer.processListPageSize"/>
+            <set field="processListPageMaxIndex" from="answer.processListPageMaxIndex"/>
+            <set field="processListPageRangeLow" from="answer.processListPageRangeLow"/>
+            <set field="processListPageRangeHigh" from="answer.processListPageRangeHigh"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="Process" allow-remote="false" read-only="true">
+        <description>One process with its tasks by priority and the devices running it. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="deviceRuleSetId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="process" type="Map"/>
+            <parameter name="taskList" type="List"/>
+            <parameter name="runningList" type="List"/>
+            <parameter name="canEdit" type="Boolean"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('getProcess', context)"/>
+            <set field="process" from="answer.process"/>
+            <set field="taskList" from="answer.taskList"/>
+            <set field="runningList" from="answer.runningList"/>
+            <set field="canEdit" from="answer.canEdit"/>
+        </actions>
+    </service>
+
+    <service verb="store" noun="Process" allow-remote="false">
+        <description>Creates a process (a name is required) or updates one (deviceRuleSetId); a process is not its own parent. Refuses without DEVICE_EDIT.</description>
+        <in-parameters>
+            <parameter name="deviceRuleSetId"/>
+            <parameter name="parentRuleSetId"/>
+            <parameter name="purposeEnumId"/>
+            <parameter name="sequenceNum" type="Integer"/>
+            <parameter name="ruleSetName"/>
+            <parameter name="description"/>
+            <parameter name="fromDate" type="Timestamp"/>
+            <parameter name="thruDate" type="Timestamp"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="deviceRuleSetId"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('storeProcess', context)"/>
+            <set field="deviceRuleSetId" from="answer.deviceRuleSetId"/>
+        </actions>
+    </service>
+
+    <service verb="store" noun="Task" allow-remote="false">
+        <description>Creates a task of a process (a name is required) or updates one of it (deviceRuleId); its device and configuration must exist. Refuses without DEVICE_EDIT.</description>
+        <in-parameters>
+            <parameter name="deviceRuleSetId" required="true"/>
+            <parameter name="deviceRuleId"/>
+            <parameter name="deviceId"/>
+            <parameter name="ruleTypeEnumId"/>
+            <parameter name="deviceConfigId"/>
+            <parameter name="ruleName"/>
+            <parameter name="description"/>
+            <parameter name="priority" type="Integer"/>
+            <parameter name="fromDate" type="Timestamp"/>
+            <parameter name="thruDate" type="Timestamp"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="deviceRuleId"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('storeTask', context)"/>
+            <set field="deviceRuleId" from="answer.deviceRuleId"/>
+        </actions>
+    </service>
+
+    <service verb="delete" noun="Task" allow-remote="false">
+        <description>Deletes a task no device runs (DEVICE_TASK_IN_USE otherwise). Refuses without DEVICE_EDIT.</description>
+        <in-parameters>
+            <parameter name="deviceRuleId" required="true"/>
+            <parameter name="deviceRuleSetId"/>
+        </in-parameters>
+        <actions>
+            <script>ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('deleteTask', context)</script>
+        </actions>
+    </service>
+
+    <service verb="get" noun="ContentList" allow-remote="false" read-only="true">
+        <description>The content of a device or group, newest first, with who added it and whether the user may transfer each file. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="contentList" type="List"/>
+            <parameter name="canEdit" type="Boolean"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('contentList', context)"/>
+            <set field="contentList" from="answer.contentList"/>
+            <set field="canEdit" from="answer.canEdit"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="ContentFile" allow-remote="false" read-only="true">
+        <description>The location of a content's file, for its download, when the content is the device's. Refuses without DEVICE_VIEW.</description>
+        <in-parameters>
+            <parameter name="deviceContentId" required="true"/>
+            <parameter name="deviceId"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="contentLocation"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('contentFile', context)"/>
+            <set field="contentLocation" from="answer.contentLocation"/>
+        </actions>
+    </service>
+
+    <service verb="store" noun="Content" allow-remote="false">
+        <description>Adds a content to a device (with its file, through DeviceServices.create#DeviceContent) or updates one of the
+            device's (deviceContentId; a new file replaces the old). Refuses without DEVICE_EDIT; DEVICE_UNAVAILABLE for another
+            device's content.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+            <parameter name="deviceContentId"/>
+            <parameter name="contentTypeEnumId"/>
+            <parameter name="description"/>
+            <parameter name="contentFile" type="org.apache.commons.fileupload2.core.FileItem"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="deviceContentId"/>
+        </out-parameters>
+        <actions>
+            <script>ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('checkContent', context)</script>
+            <if condition="deviceContentId"><then>
+                <service-call name="moqui.device.DeviceServices.update#DeviceContent" disable-authz="true"
+                        in-map="{deviceContentId:deviceContentId, contentTypeEnumId:contentTypeEnumId, description:description,
+                            contentFile:contentFile}"/>
+            </then><else>
+                <service-call name="moqui.device.DeviceServices.create#DeviceContent" disable-authz="true" out-map="created"
+                        in-map="{deviceId:deviceId, contentTypeEnumId:contentTypeEnumId, description:description,
+                            contentDate:ec.user.nowTimestamp, userId:ec.user.userId, contentFile:contentFile}"/>
+                <set field="deviceContentId" from="created.deviceContentId"/>
+            </else></if>
+        </actions>
+    </service>
+
+    <service verb="delete" noun="Content" allow-remote="false">
+        <description>Deletes a content of the device. Refuses without DEVICE_EDIT.</description>
+        <in-parameters>
+            <parameter name="deviceContentId" required="true"/>
+            <parameter name="deviceId" required="true"/>
+        </in-parameters>
+        <actions>
+            <script>ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('deleteContent', context)</script>
+        </actions>
+    </service>
+
+    <service verb="apply" noun="Task" allow-remote="false">
+        <description>Applies a task to a device or group: the task must be one of the process (DEVICE_TASK_PROCESS) and of no other device (DEVICE_TASK_DEVICE); its configuration is applied (DeviceServices.apply#DeviceConfig) and the device's process and task are set. Refuses without DEVICE_OPERATE.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+            <parameter name="deviceRuleSetId" required="true"/>
+            <parameter name="deviceRuleId" required="true"/>
+        </in-parameters>
+        <actions>
+            <script>ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('applyTask', context)</script>
+        </actions>
+    </service>
+
+    <service verb="export" noun="Process" allow-remote="false">
+        <description>Exports the recipe of the device's process to its {deviceId}_ExportProcess request, a group's through its controller (DeviceServices.export#DeviceConfig). Refuses without DEVICE_OPERATE; DEVICE_NO_PROCESS, DEVICE_NO_CONTROLLER, DEVICE_NO_REQUEST.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="transferredFiles" type="List"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('exportProcess', context)"/>
+            <set field="status" from="answer.status"/>
+            <set field="transferredFiles" from="answer.transferredFiles"/>
+        </actions>
+    </service>
+
+    <service verb="sync" noun="Parameters" allow-remote="false">
+        <description>Runs the device's {deviceId}_SyncParameters request, a group's through its controller. Refuses without DEVICE_OPERATE; DEVICE_NO_CONTROLLER, DEVICE_NO_REQUEST.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('syncParameters', context)"/>
+            <set field="status" from="answer.status"/>
+        </actions>
+    </service>
+
+    <service verb="transfer" noun="Content" allow-remote="false">
+        <description>Transfers a content's file with its device's {deviceId}_TransferContent request (DeviceServices.transfer#DeviceContent). Refuses without DEVICE_OPERATE; DEVICE_NO_REQUEST.</description>
+        <in-parameters>
+            <parameter name="deviceContentId" required="true"/>
+            <parameter name="deviceId"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="status"/>
+            <parameter name="transferredFiles" type="List"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('transferContent', context)"/>
+            <set field="status" from="answer.status"/>
+            <set field="transferredFiles" from="answer.transferredFiles"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="Choices" allow-remote="false" read-only="true">
+        <description>The options of a Devices drop-down, searched by term in the query ignoring case, with the selected value's label (DevicesApp.js choiceSources): devices, processes (of deviceId: its own and those of no device), tasks (of deviceRuleSetId that may run on deviceId), configs, trajectories, deviceTypes, devicePurposes, controlMethods, operatingModes, deviceStatuses, statusTypes, statusFlows, memberPurposes, memberStatuses, parameterTypes, parameterPurposes, parameterGroups, parameterClasses, parameterPermissions, configPurposes, configTypes, processPurposes, taskTypes, contentTypes. Refuses without DEVICE_VIEW and an unknown choice.</description>
+        <in-parameters>
+            <parameter name="choice" required="true"/>
+            <parameter name="term"/>
+            <parameter name="selected"/>
+            <parameter name="deviceId"/>
+            <parameter name="deviceRuleSetId"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="options" type="List"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('choices', context)"/>
+            <set field="options" from="answer.options"/>
+        </actions>
+    </service>
+</services>

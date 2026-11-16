@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- DeviceDetail › Overview (plan/design-devices.md §3.3): a device's identity (vendor, model, versions, serial, location, cycle
+    time) or a group's controller, the current process and task with their links, the parent device and, for a device, the groups
+    it is a member of. Read again here (get#Device), since a tab rendered on its own runs no actions of its parent. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Overview" default-menu-index="1">
+    <parameter name="deviceId" required="true"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Device" out-map="overview" transaction="force-new"
+                ignore-error="true" in-map="{deviceId:deviceId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="device" from="overview?.device || {}"/>
+        <set field="groupList" from="overview?.groups || []"/>
+    </actions>
+    <widgets>
+        <section name="OverviewFound" condition="device.deviceId">
+            <widgets>
+                <container-row>
+                    <row-col md="6">
+                        <container-box>
+                            <box-header title="${device.isGroup ? 'Group' : 'Identity'}"/>
+                            <box-body>
+                                <form-single name="DeviceIdentity" map="device">
+                        <field name="typeText"><conditional-field condition="device.typeText" title="Type"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="purposeText"><conditional-field condition="device.purposeText" title="Purpose"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="controlMethodText"><conditional-field condition="device.controlMethodText" title="Control method"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="operatingModeText"><conditional-field condition="device.operatingModeText" title="Operating mode"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="vendorModel"><conditional-field condition="device.vendorModel" title="Vendor and model"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="version"><conditional-field condition="device.version" title="Version"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="hardwareVersion"><conditional-field condition="device.hardwareVersion" title="Hardware version"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="firmwareVersion"><conditional-field condition="device.firmwareVersion" title="Firmware version"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="operatingSystem"><conditional-field condition="device.operatingSystem" title="Operating system"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="softwareApplication"><conditional-field condition="device.softwareApplication" title="Application"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="serialNumber"><conditional-field condition="device.serialNumber" title="Serial"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="uuid"><conditional-field condition="device.uuid" title="UUID"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="location"><conditional-field condition="device.location" title="Location"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="cycleTime"><conditional-field condition="device.cycleTime" title="Cycle time"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="isMulticore"><conditional-field condition="device.isMulticore" title="Multicore"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="fromDateText"><conditional-field condition="device.fromDateText" title="From"><display/></conditional-field><default-field><ignored/></default-field></field>
+                        <field name="thruDateText"><conditional-field condition="device.thruDateText" title="Through"><display/></conditional-field><default-field><ignored/></default-field></field>
+
+                                    <field name="statusText"><conditional-field condition="device.statusText" title="Status"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="statusFlowText"><conditional-field condition="device.statusFlowText" title="Status flow"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="statusTypeText"><conditional-field condition="device.statusTypeText" title="Status type"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="approximatedFunctionId"><conditional-field condition="device.approximatedFunctionId" title="Trajectory"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="coordinateSystemId"><conditional-field condition="device.coordinateSystemId" title="Coordinate system"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="transformationId"><conditional-field condition="device.transformationId" title="Transformation"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="geoPointId"><conditional-field condition="device.geoPointId" title="Geo point"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="hash"><conditional-field condition="device.hash" title="Hash"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field name="controllerName">
+                                        <conditional-field condition="device.isGroup" title="Controller">
+                                            <link url="${sharedLinks['Devices/DeviceDetail']}" text="${device.controllerName}" link-type="anchor"
+                                                    parameter-map="{deviceId:device.controllerDeviceId}" condition="device.controllerDeviceId"/>
+                                            <label text="None in service" condition="!device.controllerDeviceId"/>
+                                        </conditional-field>
+                                        <default-field>
+                                            <ignored/>
+                                        </default-field>
+                                    </field>
+                                    <field name="parentName">
+                                        <conditional-field condition="device.parentDeviceId" title="Part of">
+                                            <link url="${sharedLinks['Devices/DeviceDetail']}" text="${device.parentName}" link-type="anchor"
+                                                    parameter-map="{deviceId:device.parentDeviceId}"/>
+                                        </conditional-field>
+                                        <default-field>
+                                            <ignored/>
+                                        </default-field>
+                                    </field>
+                                    <field name="description"><conditional-field condition="device.description" title="Description"><display/></conditional-field><default-field><ignored/></default-field></field>
+                                    <field-layout>
+                                        <field-row><field-ref name="typeText"/><field-ref name="purposeText"/></field-row>
+                                        <field-row><field-ref name="controlMethodText"/><field-ref name="operatingModeText"/></field-row>
+                                        <field-row><field-ref name="statusText"/><field-ref name="statusFlowText"/></field-row>
+                                        <field-row><field-ref name="statusTypeText"/><field-ref name="approximatedFunctionId"/></field-row>
+                                        <field-row><field-ref name="coordinateSystemId"/><field-ref name="transformationId"/></field-row>
+                                        <field-row><field-ref name="geoPointId"/><field-ref name="hash"/></field-row>
+                                        <field-row><field-ref name="vendorModel"/><field-ref name="serialNumber"/></field-row>
+                                        <field-row><field-ref name="version"/><field-ref name="hardwareVersion"/></field-row>
+                                        <field-row><field-ref name="firmwareVersion"/><field-ref name="operatingSystem"/></field-row>
+                                        <field-row><field-ref name="softwareApplication"/><field-ref name="uuid"/></field-row>
+                                        <field-row><field-ref name="location"/><field-ref name="cycleTime"/></field-row>
+                                        <field-row><field-ref name="isMulticore"/><field-ref name="fromDateText"/></field-row>
+                                        <field-row><field-ref name="thruDateText"/><field-ref name="controllerName"/></field-row>
+                                        <field-ref name="parentName"/>
+                                        <field-ref name="description"/>
+                                    </field-layout>
+                                </form-single>
+                            </box-body>
+                        </container-box>
+                    </row-col>
+                    <row-col md="6">
+                        <container-box>
+                            <box-header title="Current process"/>
+                            <box-body>
+                                <label text="No process has been applied to this ${device.isGroup ? 'group' : 'device'}. Apply a task to start one."
+                                        type="p" style="m-muted" condition="!device.deviceRuleSetId"/>
+                                <link url="${sharedLinks['Processes/ProcessDetail']}" text="${device.processText}" link-type="anchor"
+                                        parameter-map="{deviceRuleSetId:device.deviceRuleSetId}" condition="device.deviceRuleSetId"/>
+                                <label text="Task: ${device.taskText || 'none'}" type="div" style="text-caption" condition="device.deviceRuleSetId"/>
+                            </box-body>
+                        </container-box>
+                        <section name="MemberOf" condition="!device.isGroup &amp;&amp; groupList.length">
+                            <widgets>
+                                <container-box>
+                                    <box-header title="Member of"/>
+                                    <box-body-nopad>
+                                        <form-list name="MemberOf" list="groupList" skip-form="true" skip-header="true" paginate="false">
+                                            <field name="groupName">
+                                                <default-field title="Group">
+                                                    <link url="${sharedLinks['Groups/GroupDetail']}" text="${groupName}" link-type="anchor"
+                                                            parameter-map="{deviceId:groupId}"/>
+                                                </default-field>
+                                            </field>
+                                            <field name="purposeText"><default-field title="As"><display/></default-field></field>
+                                            <field name="statusText" align="right">
+                                                <default-field title="Status">
+                                                    <render-mode>
+                                    <text type="qvt"><![CDATA[${statusText ? '<q-chip dense square class="q-ma-none m-tonal text-' + statusColor + '">' + WebUtilities.encodeHtml(statusText) + '</q-chip>' : ''}]]></text>
+                                    <text type="tui"><![CDATA[${JSON.stringify({t: "text", text: statusText || ""})}]]></text>
+                                    <text type="html">${statusText || ''}</text>
+                                </render-mode>
+                                                </default-field>
+                                            </field>
+                                            <columns type="mobile">
+                                                <column><field-ref name="groupName"/><field-ref name="purposeText"/></column>
+                                                <column><field-ref name="statusText"/></column>
+                                            </columns>
+                                        </form-list>
+                                    </box-body-nopad>
+                                </container-box>
+                            </widgets>
+                        </section>
+                    </row-col>
+                </container-row>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

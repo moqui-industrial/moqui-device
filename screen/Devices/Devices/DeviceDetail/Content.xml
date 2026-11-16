@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- DeviceDetail › Content (plan/design-devices.md §3.3): a device's or group's files (CNC programs, firmware, recipes), newest
+    first (get#ContentList): Download for a reader, Transfer to the device for an operator when its _TransferContent request exists,
+    Add, Edit and Delete for an engineer (store#Content, delete#Content). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Content" default-menu-index="4">
+    <parameter name="deviceId" required="true"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="storeContent" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="deleteContent" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="downloadContent" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="transferContent" location="component://moqui-device/template/DevicesParts.xml"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#ContentList" out-map="content" transaction="force-new"
+                ignore-error="true" in-map="{deviceId:deviceId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="contentList" from="content?.contentList || []"/>
+        <set field="canEdit" from="!!content?.canEdit"/>
+    </actions>
+    <widgets>
+        <container-box>
+            <box-header title="Content"/>
+            <box-toolbar>
+                <container-dialog id="AddContentDialog" button-text="Add content" icon="sym_o_upload_file" title="Add a file to the device"
+                        width="560" condition="canEdit">
+                    <form-single name="AddContent" transition="storeContent">
+                        <field name="deviceId"><default-field><hidden/></default-field></field>
+                        <field name="contentTypeEnumId">
+                            <default-field title="Kind">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'contentTypes', selected:contentTypeEnumId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                        <field name="contentFile"><default-field title="File"><file/></default-field></field>
+                        <field name="description"><default-field title="Description"><text-line size="60"/></default-field></field>
+                        <field name="submitButton"><default-field title=""><submit text="Add content" type="primary"/></default-field></field>
+                    </form-single>
+                </container-dialog>
+            </box-toolbar>
+            <box-body-nopad>
+                <form-list name="ContentRows" list="contentList" skip-form="true" paginate="false">
+                    <field name="typeText"><default-field title="Kind"><display/></default-field></field>
+                    <field name="fileName">
+                        <default-field title="File">
+                            <link url="downloadContent" text="${fileName}" link-type="anchor" target-window="_blank"
+                                    parameter-map="{deviceId:deviceId, deviceContentId:deviceContentId}" condition="fileName"/>
+                        </default-field>
+                    </field>
+                    <field name="description"><default-field title="Description"><display/></default-field></field>
+                    <field name="byText"><default-field title="Added"><display/></default-field></field>
+                    <field name="actions" align="right">
+                        <default-field title="">
+                            <link url="transferContent" text="Transfer" icon="sym_o_send_to_mobile" link-type="hidden-form-link"
+                                    parameter-map="{deviceId:deviceId, deviceContentId:deviceContentId}" condition="canTransfer"
+                                    confirmation="Transfer ${fileName} to the device?"/>
+                            <container-dialog id="EditContent_${deviceContentId}" button-text="Edit" title="Edit ${fileName || typeText}"
+                                    width="560" condition="canEdit">
+                                <form-single name="EditContent" transition="storeContent">
+                                    <field name="deviceId"><default-field><hidden/></default-field></field>
+                                    <field name="deviceContentId"><default-field><hidden/></default-field></field>
+                                    <field name="contentTypeEnumId">
+                                        <default-field title="Kind">
+                                            <drop-down allow-empty="true">
+                                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                                        parameter-map="{choice:'contentTypes', selected:contentTypeEnumId}"/>
+                                            </drop-down>
+                                        </default-field>
+                                    </field>
+                                    <field name="contentFile"><default-field title="Replace the file"><file/></default-field></field>
+                                    <field name="description"><default-field title="Description"><text-line size="60"/></default-field></field>
+                                    <field name="submitButton"><default-field title=""><submit text="Save" type="primary"/></default-field></field>
+                                </form-single>
+                            </container-dialog>
+                            <link url="deleteContent" text="Delete" icon="sym_o_delete" link-type="hidden-form-link" btn-type="danger"
+                                    parameter-map="{deviceId:deviceId, deviceContentId:deviceContentId}" condition="canEdit"
+                                    confirmation="Delete ${fileName || typeText}? The file is removed from Moqui, not from the device."/>
+                        </default-field>
+                    </field>
+                    <columns type="mobile">
+                        <column><field-ref name="fileName"/><field-ref name="typeText"/></column>
+                        <column><field-ref name="actions"/></column>
+                    </columns>
+                </form-list>
+                <label text="No content yet.${canEdit ? ' Add a program, a recipe or a firmware file.' : ''}" type="p"
+                        style="m-muted q-pa-md" condition="!contentList.length"/>
+            </box-body-nopad>
+        </container-box>
+    </widgets>
+</screen>

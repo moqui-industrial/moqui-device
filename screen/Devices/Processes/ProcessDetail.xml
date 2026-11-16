@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Devices › Processes › ProcessDetail (plan/design-devices.md §3.6; style-guide §3.3 Detail): one process with its record header
+    (id, name, purpose · parent) and Edit for an engineer (store#Process); the tabs Overview (its fields and the devices running
+    it) and Tasks. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Process" default-menu-include="false">
+    <parameter name="deviceRuleSetId" required="true"/>
+    <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
+    <transition-include name="storeProcess" location="component://moqui-device/template/DevicesParts.xml"/>
+    <subscreens default-item="Overview"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Process" out-map="processAnswer" transaction="force-new"
+                ignore-error="true" in-map="{deviceRuleSetId:deviceRuleSetId}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="recordFound" from="!!processAnswer?.process"/>
+        <set field="recordId" from="deviceRuleSetId"/>
+        <set field="process" from="processAnswer?.process || {}"/>
+        <set field="canEdit" from="!!processAnswer?.canEdit"/>
+    </actions>
+    <widgets>
+        <section name="RecordNotFound" condition="!recordFound">
+            <widgets>
+                <container-box type="warning">
+                    <box-header title="Not available"/>
+                    <box-body>
+                        <label text="Process ${recordId} is not available: it does not exist, or you may not read devices." type="p"/>
+                        <link url="${sharedLinks['Processes/Find']}" text="All processes" link-type="anchor"/>
+                    </box-body>
+                </container-box>
+            </widgets>
+        </section>
+        <section name="ProcessFound" condition="recordFound">
+            <widgets>
+                <context record-entity="moqui.device.DeviceRuleSet" record-id="${deviceRuleSetId}" title="${process.name} · ${deviceRuleSetId}"/>
+                <container style="m-record-header">
+                    <container style="row items-start q-col-gutter-x-md q-col-gutter-y-sm">
+                        <container style="col-12 col-md m-record-title">
+                            <container style="row items-center q-gutter-x-sm">
+                                <label text="${deviceRuleSetId}" type="span" style="m-key-chip text-mono q-mr-sm"/>
+                                <label text="${process.name}" type="h5" style="q-my-none"/>
+                            </container>
+                            <label text="${process.caption}" type="div" style="text-caption m-muted" condition="process.caption"/>
+                        </container>
+                        <container style="col-12 col-md-auto row items-center q-gutter-x-xs q-gutter-y-xs m-record-actions">
+                            <container-dialog id="EditProcessDialog" button-text="Edit" type="primary" icon="sym_o_edit"
+                                    title="Edit ${process.name}" width="640" condition="canEdit">
+                                <form-single name="EditProcess" transition="storeProcess" map="process">
+                                    <field name="deviceRuleSetId"><default-field><hidden/></default-field></field>
+                                    <field name="ruleSetName"><default-field title="Name" required="true"><text-line size="40"/></default-field></field>
+                                    <field name="purposeEnumId">
+                            <default-field title="Purpose">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'processPurposes', selected:purposeEnumId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="parentRuleSetId">
+                            <default-field title="Part of">
+                                <drop-down allow-empty="true">
+                                    <dynamic-options transition="choices" server-search="true" min-length="0"
+                                            parameter-map="{choice:'processes', selected:parentRuleSetId}"/>
+                                </drop-down>
+                            </default-field>
+                        </field>
+                                    <field name="sequenceNum"><default-field title="Sequence"><text-line size="6"/></default-field></field>
+                                    <field name="fromDate"><default-field title="From"><date-time/></default-field></field>
+                                    <field name="thruDate"><default-field title="Through"><date-time/></default-field></field>
+                                    <field name="description"><default-field title="Description"><text-area rows="3"/></default-field></field>
+                                    <field name="submitButton"><default-field title=""><submit text="Save" type="primary"/></default-field></field>
+                                    <field-layout>
+                                        <field-row><field-ref name="ruleSetName"/><field-ref name="purposeEnumId"/></field-row>
+                                        <field-row><field-ref name="parentRuleSetId"/><field-ref name="sequenceNum"/></field-row>
+                                        <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
+                                        <field-ref name="description"/>
+                                        <field-ref name="submitButton"/>
+                                    </field-layout>
+                                </form-single>
+                            </container-dialog>
+                            <link url="${sharedLinks['Processes/Find']}" text="All processes" icon="sym_o_list" link-type="anchor-button"/>
+                        </container>
+                    </container>
+                </container>
+                <subscreens-panel id="ProcessTabs" type="tab"/>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

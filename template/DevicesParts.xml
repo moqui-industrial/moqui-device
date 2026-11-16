@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- The shared parts of the Devices app (plan/design-devices.md §3): the transitions its screens include one by one, and the
+    sections the device and group details share. Each transition calls a moqui.device.DeviceAppServices service, which checks the
+    user's permission; the screens show an action by the capabilities of the root's devices.capabilities only.
+    - choices: the app's drop-downs (get#Choices); choiceDeviceId and choiceDeviceRuleSetId narrow the processes and tasks.
+    - applyTask, exportProcess, syncParameters, transferContent: the operator's requests on the plant.
+    - storeContent, deleteContent, downloadContent: a device's files.
+    - updateParameter: a parameter's value in a parameter list's row.
+    - updateConfig, storeProcess (a new one opens its detail), storeTask, deleteTask: the engineer's model.
+    Sections: DeviceHeader (the record header of a device or a group, from deviceAnswer) and NotAvailable. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd">
+    <transition name="choices" read-only="true">
+        <actions>
+            <service-call name="moqui.device.DeviceAppServices.get#Choices" out-map="found"
+                    in-map="{choice:choice, term:(term || null), selected:(selected || null), deviceId:(choiceDeviceId || null),
+                        deviceRuleSetId:(choiceDeviceRuleSetId || null)}"/>
+            <script>ec.web.sendJsonResponse(found.options || [])</script>
+        </actions>
+        <default-response type="none"/>
+    </transition>
+    <transition name="applyTask">
+        <service-call name="moqui.device.DeviceAppServices.apply#Task"
+                in-map="{deviceId:deviceId, deviceRuleSetId:deviceRuleSetId, deviceRuleId:deviceRuleId}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="exportProcess">
+        <service-call name="moqui.device.DeviceAppServices.export#Process" in-map="{deviceId:deviceId}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="syncParameters">
+        <service-call name="moqui.device.DeviceAppServices.sync#Parameters" in-map="{deviceId:deviceId}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="transferContent">
+        <service-call name="moqui.device.DeviceAppServices.transfer#Content" in-map="{deviceId:deviceId, deviceContentId:deviceContentId}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="storeContent">
+        <service-call name="moqui.device.DeviceAppServices.store#Content"
+                in-map="{deviceId:deviceId, deviceContentId:(deviceContentId || null), contentTypeEnumId:(contentTypeEnumId || null),
+                    description:(description || null), contentFile:contentFile}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="deleteContent">
+        <service-call name="moqui.device.DeviceAppServices.delete#Content" in-map="{deviceId:deviceId, deviceContentId:deviceContentId}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="downloadContent" read-only="true">
+        <actions>
+            <service-call name="moqui.device.DeviceAppServices.get#ContentFile" out-map="file"
+                    in-map="{deviceId:deviceId, deviceContentId:deviceContentId}"/>
+            <script>ec.web.sendResourceResponse(file.contentLocation, false, String(file.contentLocation).split('/').pop())</script>
+        </actions>
+        <default-response type="none"/>
+        <error-response url="."/>
+    </transition>
+    <transition name="updateParameter">
+        <service-call name="moqui.device.DeviceAppServices.update#ParameterValue"
+                in-map="{parameterId:parameterId, numericValue:numericValue, symbolicValue:symbolicValue, parameterEnumId:parameterEnumId}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="updateConfig">
+        <service-call name="moqui.device.DeviceAppServices.update#Config"
+                in-map="{deviceConfigId:deviceConfigId, configName:configName, description:description,
+                    controlMethodEnumId:controlMethodEnumId, approximatedFunctionId:approximatedFunctionId, fromDate:fromDate, thruDate:thruDate}"/>
+        <default-response url="."/>
+    </transition>
+    <!-- a new process opens its detail -->
+    <transition name="storeProcess">
+        <service-call name="moqui.device.DeviceAppServices.store#Process" out-map="stored"
+                in-map="{deviceRuleSetId:(deviceRuleSetId || null), parentRuleSetId:parentRuleSetId, purposeEnumId:purposeEnumId,
+                    sequenceNum:sequenceNum, ruleSetName:ruleSetName, description:description, fromDate:fromDate, thruDate:thruDate}"/>
+        <default-response url="${sharedLinks['Processes/ProcessDetail']}">
+            <parameter name="deviceRuleSetId" from="stored.deviceRuleSetId"/>
+        </default-response>
+        <error-response url="."/>
+    </transition>
+    <transition name="storeTask">
+        <service-call name="moqui.device.DeviceAppServices.store#Task"
+                in-map="{deviceRuleSetId:deviceRuleSetId, deviceRuleId:(deviceRuleId || null), deviceId:deviceId,
+                    ruleTypeEnumId:ruleTypeEnumId, deviceConfigId:deviceConfigId, ruleName:ruleName, description:description,
+                    priority:priority, fromDate:fromDate, thruDate:thruDate}"/>
+        <default-response url="."/>
+    </transition>
+    <transition name="deleteTask">
+        <service-call name="moqui.device.DeviceAppServices.delete#Task" in-map="{deviceRuleSetId:deviceRuleSetId, deviceRuleId:deviceRuleId}"/>
+        <default-response url="."/>
+    </transition>
+
+    <widgets>
+        <!-- a device or group that does not exist, or a user who may not read it; backLink and backText name its list -->
+        <section name="NotAvailable">
+            <widgets>
+                <container-box type="warning">
+                    <box-header title="Not available"/>
+                    <box-body>
+                        <label text="${recordWhat} ${recordId} is not available: it does not exist, or you may not read devices." type="p"/>
+                        <link url="${backLink}" text="${backText}" link-type="anchor"/>
+                    </box-body>
+                </container-box>
+            </widgets>
+        </section>
+
+        <!-- the record header of a device or a group (style-guide §3.3), from deviceAnswer (get#Device): the id chip, the name and
+            the caption, the status chip; Apply task for an operator, the requests that exist in More -->
+        <section name="DeviceHeader">
+            <actions>
+                <set field="device" from="deviceAnswer.device"/>
+                <set field="can" from="deviceAnswer.actions"/>
+            </actions>
+            <widgets>
+                <context record-entity="moqui.device.Device" record-id="${device.deviceId}" title="${device.name} · ${device.deviceId}"/>
+                <container style="m-record-header">
+                    <container style="row items-start q-col-gutter-x-md q-col-gutter-y-sm">
+                        <container style="col-12 col-md m-record-title">
+                            <container style="row items-center q-gutter-x-sm">
+                                <label text="${device.deviceId}" type="span" style="m-key-chip text-mono q-mr-sm"/>
+                                <label text="${device.name}" type="h5" style="q-my-none"/>
+                            </container>
+                            <label text="${device.caption}" type="div" style="text-caption m-muted" condition="device.caption"/>
+                            <label text="Controller: ${device.controllerName}" type="div" style="text-caption m-muted"
+                                    condition="device.isGroup &amp;&amp; device.controllerDeviceId"/>
+                            <label text="No controller in service: the group's requests cannot run" type="div" style="text-caption text-warning"
+                                    condition="device.isGroup &amp;&amp; !device.controllerDeviceId"/>
+                        </container>
+                        <container style="col-12 col-md-auto m-record-status">
+                            <render-mode>
+                                <text type="qvt"><![CDATA[${device.statusText ? '<q-chip square class="q-ma-none m-tonal text-' + device.statusColor
+                                    + '">' + WebUtilities.encodeHtml(device.statusText) + '</q-chip>' : ''}]]></text>
+                                <text type="tui"><![CDATA[${JSON.stringify({t: "text", style: "strong", text: device.statusText || ""})}]]></text>
+                                <text type="html">${device.statusText || ''}</text>
+                            </render-mode>
+                        </container>
+                    </container>
+                    <container style="row items-center q-col-gutter-x-md q-col-gutter-y-sm m-record-foot">
+                        <container style="col-12 col-md">
+                            <label text="Process: ${device.processText || 'none'} · Task: ${device.taskText || 'none'}" type="div"
+                                    style="text-caption"/>
+                        </container>
+                        <container style="col-12 col-md-auto row items-center q-gutter-x-xs q-gutter-y-xs m-record-actions">
+                            <container-dialog id="ApplyTaskDialog" button-text="Apply task" type="primary" icon="sym_o_play_circle"
+                                    title="Apply a task to ${device.name}" width="560" condition="can.applyTask">
+                                <label text="The task's configuration is applied to the device, and it becomes the device's current process and task."
+                                        type="p" style="text-caption m-muted"/>
+                                <form-single name="ApplyTask" transition="applyTask" map="device">
+                                    <field name="deviceId"><default-field><hidden/></default-field></field>
+                                    <field name="deviceRuleSetId">
+                                        <default-field title="Process">
+                                            <drop-down allow-empty="false">
+                                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                                        parameter-map="{choice:'processes', selected:deviceRuleSetId, choiceDeviceId:deviceId}"/>
+                                            </drop-down>
+                                        </default-field>
+                                    </field>
+                                    <field name="deviceRuleId">
+                                        <default-field title="Task">
+                                            <drop-down allow-empty="false">
+                                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                                        parameter-map="{choice:'tasks', selected:deviceRuleId, choiceDeviceId:deviceId}">
+                                                    <depends-on field="deviceRuleSetId" parameter="choiceDeviceRuleSetId"/>
+                                                </dynamic-options>
+                                            </drop-down>
+                                        </default-field>
+                                    </field>
+                                    <field name="submitButton"><default-field title=""><submit text="Apply task" type="primary"/></default-field></field>
+                                </form-single>
+                            </container-dialog>
+                            <button-menu text="More" icon="more_horiz">
+                                <link url="exportProcess" text="Export process recipe" icon="sym_o_upload" link-type="hidden-form-link"
+                                        parameter-map="{deviceId:device.deviceId}" condition="can.exportProcess"
+                                        confirmation="Export the recipe of ${device.processText} to ${device.isGroup ? device.controllerName : device.name}?"/>
+                                <link url="syncParameters" text="Synchronize parameters" icon="sym_o_sync" link-type="hidden-form-link"
+                                        parameter-map="{deviceId:device.deviceId}" condition="can.syncParameters"
+                                        confirmation="Send the parameters of ${device.isGroup ? device.controllerName : device.name} to the device?"/>
+                                <link url="${backLink}" text="${backText}" icon="sym_o_list"/>
+                            </button-menu>
+                        </container>
+                    </container>
+                </container>
+            </widgets>
+        </section>
+    </widgets>
+</screen>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- IronStone Devices (plan/design-devices.md §1): the root of the app for the engineers who model the plant's devices and the
+    operators who run requests on them, mounted beside the BOSS apps by moqui-device's MoquiConf.xml (/qapps/Devices). The
+    DEVICES artifact group (data/DevicesAppData.xml) opens it to ADMIN and the DEVICES group; the grant opens navigation only:
+    get#SharedContext gives the user's capabilities and the app's links, and every DeviceAppServices service checks the
+    permission again. The areas are the directory's screens: Home, Devices, Groups, Configurations, Processes. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Devices" menu-image="sym_o_memory" menu-image-type="icon">
+
+    <always-actions>
+        <set field="appRoot" value="Devices"/>
+        <service-call name="moqui.device.DeviceAppServices.get#SharedContext" in-map="{appRoot:appRoot}" out-map="devices"/>
+        <set field="sharedLinks" from="devices.sharedLinks"/>
+    </always-actions>
+
+    <subscreens default-item="Home" always-use-full-path="true"/>
+
+    <widgets><subscreens-panel id="devices-panel" type="popup"/></widgets>
+</screen>

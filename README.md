@@ -320,6 +320,27 @@ still making the execution plan explicit, scoped, auditable and suitable for
 system engineering.
 
 
+## The Devices app
+
+IronStone Devices, at `/qapps/Devices` beside the BOSS apps, is the user interface of this
+component on MR-Moqui: devices and groups with their members, parameters, files and
+current process and task; configurations; processes and their tasks. An operator applies
+a task, exports a process recipe, synchronizes parameters and transfers files from a
+device's header. It replaces the device screens of the Java SimpleScreens fork, without
+their Grafana panels, and needs neither Mantle nor mr-boss.
+
+| Path | Contents |
+| --- | --- |
+| `screen/Devices.xml`, `screen/Devices/` | The app's screens; `template/DevicesParts.xml` holds their shared transitions and the record header |
+| `service/moqui/device/DeviceAppServices.xml`, `DevicesApp.js` | The services the screens call, each checking the user's permission |
+| `data/DevicesAppData.xml` | The permissions `DEVICE_VIEW`, `DEVICE_EDIT`, `DEVICE_OPERATE`, the groups `DEVICES`, `DEVICES_ENGINEER`, `DEVICES_OPERATOR` and the root's grant |
+| `test/Devices/`, `test/client/Devices/`, `test/acceptance/Devices/` | Access, rules and screen specs; the golden-path walk; the terminal sweep |
+
+A user needs the `DEVICES` group to open it; `DEVICES_ENGINEER` edits the model and
+`DEVICES_OPERATOR` runs requests on the plant. The design is
+[plan/design-devices.md](plan/design-devices.md), the record of what was built
+[plan/impl-devices.md](plan/impl-devices.md).
+
 ## Math–Device duality
 
 `moqui.device` and `moqui.math` are two complementary faces of one problem. The
@@ -487,7 +508,7 @@ content must belong to the device of the request. The destination is the
   fingerprint with `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`.
 
 `DeviceTestData.xml` ships `VIRTUAL_PLC_01_TransferContent` and
-`DG_EDGE_01_TransferContent`. The SimpleScreens device screens find these
+`DG_EDGE_01_TransferContent`. The [Devices app](#the-devices-app) finds these
 requests by name: `{deviceId}_TransferContent`, and likewise
 `{deviceId}_ExportProcess` for the recipe export and `{deviceId}_SyncParameters`
 for the parameter write.
@@ -776,7 +797,7 @@ flows together:
 - `DeviceRuleSet` and `DeviceRule` rows for process/task application;
 - device-scoped `Parameter` values and config-scoped `Parameter` values;
 - observability records for `ParameterLog` and `DeviceLog`, plus optional Mantle `Measurement` telemetry;
-- Grafana-ready `DeviceDashboard` assignments used by the SimpleScreens UI.
+- `DeviceDashboard` assignments (Grafana paths of the Java screens; the Devices app shows none).
 
 This XML file has `type="test"`: ordinary `seed,seed-initial,install` loading
 does not load it. The base regression suite and this fixture need only
