@@ -17,18 +17,20 @@ import json
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get('Content-Length', '0')))
-        if self.path == '/fail':
+        # OpenVLA takes its key in the query (apiKey=...), so the route is the path without it
+        path, _, query = self.path.partition('?')
+        if path == '/fail':
             self.send_response(503)
             self.end_headers()
             return
         value = {'body': json.loads(body or b'{}'), 'apiKey': self.headers.get('X-API-Key'),
-                 'query': self.path.partition('?')[2]}
-        if self.path == '/act':
+                 'query': query}
+        if path == '/act':
             parsed = json.loads(body)
-            value = {'action':[1,2,3], 'modelId':'bytes:' + parsed['image_base64']}
-        if self.path == '/ground':
+            value = {'action':[1,2,3], 'modelId':'bytes:' + parsed['image_base64'], 'unnormKey': query}
+        if path == '/ground':
             value = {'boundingBox':[1,2,3,4], 'center':[2,3], 'targetPose':[1,2,3,0,0,0], 'objectLabel':'fixture'}
-        if self.path == '/plan':
+        if path == '/plan':
             value = {'waypoints':[[0,0,0,0,0,0],[1,2,3,0,0,0]]}
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')

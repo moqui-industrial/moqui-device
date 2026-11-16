@@ -2,24 +2,41 @@ Run from the MR-Moqui framework root with this component and moqui-math installe
 Mantle is not required for the base regression suite. `data/DeviceTestData.xml`
 is `type="test"` and is loaded by the scratch test runner, not ordinary seed loading.
 
+For the model-only migration gate (no device services or external infrastructure):
+
+```bash
+./moq test --nobuild moqui-math moqui-device --spec MathModel,MathViews,DeviceModel --db fresh
+```
+
+Build the framework first if no binary is available. These specs create their
+own fixtures; they do not exercise the service implementations below.
+
+The component suite, from MR-Moqui after `./moq build --debug -j 4`:
+
 ```bash
 ./moq test --debug moqui-device
 ```
 
+It needs no driver component. `DeviceRequests.spec.js` covers the recipe export,
+the file transfer, the sample store and the gateway scope; its SFTP feature runs
+only with `gateway_sftp_test` and a runner that installs the framework's SFTP
+client (`moqui test` does not). The requests on the drivers are tested by
+moqui-device-gateway, whose `scripts/run-driver-tests.py` also runs this suite.
+
 Optional Mantle WorkEffort/Measurement records are in `test/mantle/MantleTestData.xml`,
 outside automatic data discovery. Tests needing that telemetry require installing
-mantle-udm and temporarily adding `<depends-on name="mantle-udm"/>` to the test
+mr-mantle and temporarily adding `<depends-on name="mr-mantle"/>` to the test
 runtime's moqui-device/component.xml. After normal seeds and base test data, load
 that file explicitly:
 
 ```bash
-./moq load --debug types=test location=runtime/component/moqui-device/test/mantle/MantleTestData.xml
+./moq load --debug types=test location=runtime/components/addon/moqui-device/test/mantle/MantleTestData.xml
 ```
 
 Restore the ordinary manifest after testing. Mantle remains optional for users
 who do not run these telemetry scenarios.
 
-The normal tests use the test runner's scratch database. Two HTTP contract
+The normal tests use the test runner's scratch database. Three OpenVLA contract
 features require a loopback fixture server, started from the component root:
 
 ```bash
@@ -34,7 +51,7 @@ inference_test_url=http://127.0.0.1:18091 ./moq test --debug moqui-device
 
 `--db existing` is only for a disposable, already loaded test database; the tests
 must not target a production runtime. HTTP checks are explicitly ignored unless
-the fixture URL is configured. They check headers, JSON bodies and error handling.
+the fixture URL is configured. They check the URL, the JSON bodies and error handling.
 Gateway protocol/container tests live in moqui-device-gateway.
 
 For a disposable already loaded database, load the test fixture explicitly:
@@ -44,32 +61,19 @@ For a disposable already loaded database, load the test fixture explicitly:
 inference_test_url=http://127.0.0.1:18091 ./moq test --debug moqui-device --db existing
 ```
 
-The optional actual ONNX/provider integration feature uses
-`trajectory_onnx_test_url=http://127.0.0.1:18092`. First generate/start the
-[isolated Rust provider](../examples/onnx-obstacle/README.md) and explicitly load
-its `ModelData.xml` into the test database. The feature is ignored unless that
-URL is supplied. Standalone Rust inference tests need no Moqui or Mantle.
-
-To run **only** the actual ONNX integration in a disposable runtime containing
-just moqui-math and moqui-device (no Mantle), load ordinary seeds and the example's
-`ModelData.xml`, start its provider, and select that feature:
+The ONNX planner feature runs `run#RobotArmTrajectoryPlanner` with the bundled
+model `data/ml/trajectory_planner.onnx` in the Moqui process, and checks the rows
+it writes and that the model is loaded once for two calls. It needs a binary built
+with the `onnx` feature and the ONNX Runtime library; it is ignored unless
+`trajectory_native_test` is set:
 
 ```bash
-trajectory_onnx_test_url=http://127.0.0.1:18092 \
-  ./moq test --debug moqui-device --db existing --feature 'actual Rust ONNX'
+./moq build --debug -- --features moqui-device/onnx
+ORT_DYLIB_PATH=/absolute/path/to/libonnxruntime.so trajectory_native_test=true \
+  ./moq test --debug moqui-device
 ```
 
-The native ONNX features require the optional `moqui-device/onnx` build feature,
-`ORT_DYLIB_PATH`, and the example's `ModelData.xml`. Run them without any HTTP
-provider or Mantle in a disposable runtime containing only moqui-math/moqui-device:
-
-```bash
-trajectory_native_test=true ./moq test --debug moqui-device --db existing --feature 'native Rust ONNX'
-```
-
-The full suite enables both native and optional remote checks when both sets
-of environment variables are configured.
-
-The native factory feature additionally verifies session reuse, explicit
-invalidation and reload after a `MathModelDefContent.contentDate` revision. It
-uses real ONNX Runtime sessions, with no remote provider.
+With the HTTP fixture running as above, `inference_test_url` also enables the
+three OpenVLA features (`run#OpenVla` with the image bytes and the key in the
+query, `run#OpenVlaGrounding` with its saved vectors, and an HTTP error). The
+unit tests of the `TrajectoryGenerator` tool are `cargo test` in this component.
