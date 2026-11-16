@@ -198,7 +198,7 @@ and acquisition notices inside `run#DeviceRequest`, and `notify#DeviceRequestRes
 
 Build from mr-moqui with `./moq build --debug -j 4` and run the component specs
 with `./moq test moqui-device`; it needs no driver component. Check the model and
-data with `moqui check runtime/component/moqui-device/entity runtime/component/moqui-device/data`. Inference, provider
+data with `moqui check runtime/components/addon/moqui-device/entity runtime/components/addon/moqui-device/data`. Inference, provider
 and SFTP cases are opt-in (see `test/README.md`). The requests on the drivers,
 with local Modbus, OPC UA and MQTT peers, and the acceptance runs (broker loss,
 database outage, restart) are those of moqui-device-gateway.

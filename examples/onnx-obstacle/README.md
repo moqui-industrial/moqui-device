@@ -86,11 +86,11 @@ Install only `moqui-math` and `moqui-device`, load their ordinary seeds, then
 explicitly register this example from the MR-Moqui framework root:
 
 ```bash
-./moq load --debug types=test location=runtime/component/moqui-device/examples/onnx-obstacle/ModelData.xml
+./moq load --debug types=test location=runtime/components/addon/moqui-device/examples/onnx-obstacle/ModelData.xml
 ```
 
 Build the framework with the optional component feature (the component must be
-installed under `runtime/component/moqui-device`) and set the runtime library:
+installed under `runtime/components/addon/moqui-device`) and set the runtime library:
 
 ```bash
 ./moq build --debug -- --features moqui-device/onnx

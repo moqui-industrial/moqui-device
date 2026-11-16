@@ -815,7 +815,7 @@ for a real PLC Application. Its records are derived in the following order:
    updates through `DeviceRequestItem`.
 
 After `moqui-math` and `moqui-device` are installed under
-`runtime/component`, load the example with the normal Moqui seed-data flow:
+`runtime/components/addon`, load the example with the normal Moqui seed-data flow:
 
 ```shell
 # MR-Moqui master, after installing moqui-math and moqui-device:
@@ -868,7 +868,7 @@ from the Groovy version, in the model and in the services, are in
 [SERVICE-PORT.md](SERVICE-PORT.md).
 
 Use this branch with [MR-Moqui master](https://github.com/moqui/mr-moqui), plus
-`moqui-math` under `runtime/component`. Install
+`moqui-math` under `runtime/components/addon`. Install
 [moqui-device-gateway](https://github.com/moqui/moqui-device-gateway/blob/mr-moqui/README.md)
 (branch `mr-moqui`) too to run requests on MQTT, OPC UA, Modbus TCP, EtherNet/IP or
 EtherCAT devices; it
