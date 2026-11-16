@@ -148,3 +148,50 @@ feature("every choice offers its values and the selected one outside its page", 
         /Unknown Devices choice/.test(out.unknown)
     }
 })
+
+feature("observability draws a logged parameter over time and lists the device log, a group's with its members'", {
+    when() {
+        const plc = invoke(app + "get#Observability", {deviceId: "VIRTUAL_PLC_01", parameterId: "TestPlcCycleTimeParam", range: "all"})
+        const times = plc.frame.fields[0].values
+        const group = invoke(app + "get#Observability", {deviceId: "DG_EDGE_01", range: "all"})
+        return {
+            parameterId: plc.parameterId,
+            points: plc.pointCount,
+            ascending: times.every((at, index) => index === 0 || times[index - 1] <= at),
+            numeric: plc.frame.fields[1].type === "number" && plc.panel.visualization === "timeSeries",
+            plcLogs: plc.deviceLogListCount,
+            groupOptions: group.parameterOptions.map(option => option.value),
+            groupLogs: group.deviceLogListCount,
+            recent: invoke(app + "get#Observability", {deviceId: "VIRTUAL_PLC_01", parameterId: "TestPlcCycleTimeParam", range: "1h"}).pointCount
+        }
+    },
+    then(out) {
+        out.parameterId == "TestPlcCycleTimeParam"
+        out.points == 4
+        out.ascending == true
+        out.numeric == true
+        out.plcLogs > 0
+        out.groupOptions.includes("TestPlcCycleTimeParam") && out.groupOptions.includes("TestDriveSpeedParam")
+        out.groupLogs > out.plcLogs
+        out.recent == 0
+    }
+})
+
+feature("the HVAC demo series is written once, and a group shows the logs of the devices of its nested groups", {
+    when() {
+        const again = invoke("moqui.device.DeviceDemoServices.load#HvacDemoSeries")
+        const plant = invoke(app + "get#Observability", {deviceId: "HVAC_DEMO", parameterId: "HvacTempFeedback", range: "7d", pageSize: 100})
+        return {
+            againLogs: again.parameterLogCount,
+            againEvents: again.deviceLogCount,
+            points: plant.pointCount,
+            devices: Array.from(new Set(plant.deviceLogList.map(row => row.deviceName)))
+        }
+    },
+    then(out) {
+        out.againLogs == 0
+        out.againEvents == 0
+        out.points > 600
+        out.devices.includes("HvacApplication") && out.devices.length > 2
+    }
+})

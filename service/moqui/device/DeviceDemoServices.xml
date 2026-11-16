@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- Demo services of moqui-device: data that only a demo instance loads (data/HVACDemoSeriesData.xml), never production. -->
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+
+    <service verb="load" noun="HvacDemoSeries" authenticate="false">
+        <description>The HVAC demo's history, dated back from the load so that the Devices app's Observability shows the last days: a
+            reading every 15 minutes over the last 7 days of the PLC's room temperature and humidity, duct temperature and
+            humidity (ParameterLog, a day and night cycle around their setpoints with a little noise), the fan speed and air flow
+            references (higher in occupied hours), the humidity control switched on and off (a text log), and DeviceLog events of
+            the PLC, the pumps, the valves and the fan (starts, stops, openings, alarms). Each series is written only when its
+            parameter has no log yet, and the events only when the PLC has none, so a second load adds nothing; refresh true
+            first deletes the demo's logs and events and writes them again from now, for a demo grown old.</description>
+        <in-parameters>
+            <parameter name="days" type="Integer" default="7"/>
+            <parameter name="stepMinutes" type="Integer" default="15"/>
+            <parameter name="refresh" type="Boolean" default="false"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="parameterLogCount" type="Integer"/>
+            <parameter name="deviceLogCount" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <script><![CDATA[
+                const step = Math.max(1, Number(stepMinutes || 15)) * 60000
+                const end = Math.floor(ec.user.timestampMillis(ec.user.nowTimestamp) / step) * step
+                const start = end - Math.max(1, Number(days || 7)) * 86400000
+                // a repeatable noise: the same load makes the same series
+                let seed = 20261116
+                const noise = () => {
+                    seed = (seed * 1103515245 + 12345) % 2147483648
+                    return seed / 2147483648 - 0.5
+                }
+                const hourOf = at => new Date(at).getHours() + new Date(at).getMinutes() / 60
+                const occupied = at => {
+                    const day = new Date(at).getDay(), hour = hourOf(at)
+                    return day >= 1 && day <= 5 && hour >= 7 && hour < 19
+                }
+                // the daily cycle: warmest in mid afternoon, coolest before dawn
+                const daily = at => Math.sin(((hourOf(at) - 9) / 24) * 2 * Math.PI)
+                const round = (value, digits) => Number(value.toFixed(digits))
+                const series = {
+                    HvacTempFeedback: at => round(22 + 1.2 * daily(at) + (occupied(at) ? 0.4 : -0.6) + 0.3 * noise(), 2),
+                    HvacRhFeedback: at => round(50 - 6 * daily(at) + 2 * noise(), 1),
+                    HvacDuctTempFeedback: at => round(15 + 2.5 * daily(at) + (occupied(at) ? -1 : 0.5) + 0.4 * noise(), 2),
+                    HvacDuctRhFeedback: at => round(62 - 8 * daily(at) + 3 * noise(), 1),
+                    HvacAhuFanSpeedSetpoint: at => (occupied(at) ? 70 : 30),
+                    HvacAirFlowRef: at => round((occupied(at) ? 68 : 28) + 2 * noise(), 1)
+                }
+                const write = (parameterId, at, sequenceNum, fields) => {
+                    const row = ec.entity.makeValue('moqui.math.ParameterLog')
+                    row.setAll(Object.assign({parameterId, sequenceNum, observedDate: new Date(at)}, fields))
+                    row.setSequencedIdPrimary()
+                    row.create()
+                }
+                const hvacDevices = ['HVAC_DEMO_PLC', 'HVAC_AHU_FAN', 'HVAC_COLD_GLYCOL_PUMP', 'HVAC_COLD_GLYCOL_VALVE',
+                    'HVAC_HOT_GLYCOL_PUMP', 'HVAC_HOT_GLYCOL_VALVE']
+                if (refresh) {
+                    ec.entity.find('moqui.math.ParameterLog').condition('parameterId', 'in', Object.keys(series).concat(['HvacRhControlEnabled']))
+                        .disableAuthz().deleteAll()
+                    ec.entity.find('moqui.device.DeviceLog').condition('deviceId', 'in', hvacDevices).disableAuthz().deleteAll()
+                }
+                const hasLog = parameterId => ec.entity.find('moqui.math.ParameterLog').condition('parameterId', parameterId).disableAuthz().count() > 0
+                parameterLogCount = 0
+                for (const parameterId of Object.keys(series)) {
+                    if (hasLog(parameterId)) continue
+                    let sequenceNum = 0
+                    for (let at = start; at <= end; at += step) {
+                        write(parameterId, at, ++sequenceNum, {numericValue: series[parameterId](at)})
+                        parameterLogCount++
+                    }
+                }
+                // a text log: humidity control on through the occupied hours of each working day
+                if (!hasLog('HvacRhControlEnabled')) {
+                    let sequenceNum = 0, previous = null
+                    for (let at = start; at <= end; at += step) {
+                        const value = occupied(at) ? 'TRUE' : 'FALSE'
+                        if (value === previous) continue
+                        write('HvacRhControlEnabled', at, ++sequenceNum, {symbolicValue: value})
+                        previous = value
+                        parameterLogCount++
+                    }
+                }
+                // the events of the plant, a few a day
+                deviceLogCount = 0
+                const plcLogged = ec.entity.find('moqui.device.DeviceLog').condition('deviceId', 'HVAC_DEMO_PLC').disableAuthz().count() > 0
+                if (!plcLogged) {
+                    const sequences = {}
+                    let event = (deviceId, at, payload) => {
+                        const row = ec.entity.makeValue('moqui.device.DeviceLog')
+                        sequences[deviceId] = (sequences[deviceId] || 0) + 1
+                        row.setAll({deviceId, observedDate: new Date(at), sequenceNum: sequences[deviceId], payload: JSON.stringify(payload)})
+                        row.setSequencedIdPrimary()
+                        row.create()
+                        deviceLogCount++
+                    }
+                    // each local day from the first midnight of the range; an event is written only inside the range
+                    const firstDay = new Date(start)
+                    firstDay.setHours(0, 0, 0, 0)
+                    const plain = event
+                    event = (deviceId, at, payload) => {
+                        if (at >= start && at <= end) plain(deviceId, at, payload)
+                    }
+                    for (let day = firstDay.getTime(); day < end; day += 86400000) {
+                        const morning = day + 7 * 3600000, evening = day + 19 * 3600000
+                        if (!occupied(morning)) {
+                            event('HVAC_DEMO_PLC', day + 6 * 3600000, {status: 'running', mode: 'unoccupied', message: 'night setback active'})
+                            continue
+                        }
+                        event('HVAC_DEMO_PLC', morning - 900000, {status: 'running', mode: 'occupied', message: 'occupancy schedule started'})
+                        event('HVAC_AHU_FAN', morning - 600000, {status: 'running', speedPct: 70, message: 'fan speed raised for occupancy'})
+                        event('HVAC_COLD_GLYCOL_PUMP', morning + 4 * 3600000, {status: 'running', message: 'chilled water pump started'})
+                        event('HVAC_COLD_GLYCOL_VALVE', morning + 4 * 3600000 + 300000, {status: 'running', openingPct: round(35 + 30 * Math.abs(noise()), 0), message: 'cooling valve modulating'})
+                        event('HVAC_COLD_GLYCOL_PUMP', evening - 1800000, {status: 'standstill', message: 'chilled water pump stopped'})
+                        event('HVAC_AHU_FAN', evening, {status: 'running', speedPct: 30, message: 'fan speed lowered after occupancy'})
+                        event('HVAC_DEMO_PLC', evening + 300000, {status: 'running', mode: 'unoccupied', message: 'occupancy schedule ended'})
+                    }
+                    // one alarm and its acknowledgment, two days back
+                    const alarm = end - 2 * 86400000 + 14 * 3600000
+                    event('HVAC_HOT_GLYCOL_VALVE', alarm, {status: 'error', severity: 'warning', message: 'valve feedback out of tolerance'})
+                    event('HVAC_DEMO_PLC', alarm + 1200000, {status: 'running', message: 'hot glycol valve alarm acknowledged'})
+                }
+            ]]></script>
+        </actions>
+    </service>
+</services>

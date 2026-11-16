@@ -7,7 +7,7 @@
 const root = "component://moqui-device/screen/Devices.xml"
 const lib = ec.resource.script("component://moqui-device/test/Devices/DevicesSpecLib.js")
 const mounts = ["Groups/Find", "Groups/GroupDetail", "Groups/GroupDetail/Overview", "Groups/GroupDetail/Members",
-    "Groups/GroupDetail/Parameters", "Groups/GroupDetail/Content", "Configs/ConfigDetail/Parameters"]
+    "Groups/GroupDetail/Parameters", "Groups/GroupDetail/Content", "Groups/GroupDetail/Observability", "Configs/ConfigDetail/Parameters"]
 
 function sweepScreens() {
     const files = []

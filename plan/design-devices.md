@@ -83,9 +83,9 @@ capability: **Apply task** (primary, operator), and More: Export process recipe 
 | Overview | Identity (vendor, model, versions, OS, application, serial, UUID, location, cycle time), the current process and task with links, the parent device, the groups it is a member of |
 | Parameters | The device's parameters (`ParameterDetail` by `deviceId`): code, name, type, value, unit, range; the engineer edits a value in the row (`update#ParameterValue`) |
 | Content | The device's files (`DeviceContent`): type, file, description, who and when; Add, Edit, Delete (engineer), Download (reader), Transfer (operator, when `{deviceId}_TransferContent` exists) |
+| Observability | A logged parameter over time and the device log (§3.8), in place of the Java screens' Grafana panels |
 
-Not available: a device that does not exist says so and links back to the list. The Java screens' Grafana panel and
-Observability tab are not carried over (§5).
+Not available: a device that does not exist says so and links back to the list.
 
 ### 3.4 Groups › Find (List) and GroupDetail (Detail)
 
@@ -117,6 +117,13 @@ the query and reading a selected value outside the page: `devices`, `processes` 
 unassigned ones), `tasks` (of a process, for a device: those with no device or this device), `configs`, `trajectories`,
 and the enumerations `deviceTypes`, `devicePurposes`, `controlMethods`, `processPurposes`, `taskTypes`, `contentTypes`.
 
+### 3.8 Observability (a tab of DeviceDetail and GroupDetail)
+
+In the style of System › Monitor › Metrics: a picker of a logged parameter (the device's, or a group's and its
+members', through nested groups) and a range (last hour, day, week, month, year, all), the parameter's `ParameterLog` drawn over time by a
+`report-panel` (a time series of numbers; texts listed in a table), and the `DeviceLog` rows of the same devices in the
+range, newest first, paged. `get#Observability` builds the frame and the page.
+
 ## 4. Services
 
 `service/moqui/device/DeviceAppServices.xml`, the logic in `DevicesApp.js` (one module, an operations table):
@@ -138,6 +145,7 @@ and the enumerations `deviceTypes`, `devicePurposes`, `controlMethods`, `process
 | `export#Process` | operate | The process recipe to the device's (a group's controller's) export request (`export#DeviceConfig`) |
 | `sync#Parameters` | operate | Runs the device's (controller's) `_SyncParameters` request |
 | `transfer#Content` | operate | Runs `transfer#DeviceContent` with the device's `_TransferContent` request |
+| `get#Observability` | view | The chosen parameter's log as a report frame and the device log, in a range (§3.8) |
 | `get#Choices` | view | The choice sources of §3.7 |
 
 ## 5. From the Java screens
@@ -146,7 +154,7 @@ and the enumerations `deviceTypes`, `devicePurposes`, `controlMethods`, `process
 | --- | --- |
 | `Device.xml`, `dashboard.xml` (four links) | Root and Home (§3.1) |
 | `Device/FindDevice`, `EditDevice`, `FindParameter` | Devices › Find, DeviceDetail with Overview, Parameters, Content |
-| `Device/DeviceObservability`, the Grafana panel of `EditDevice` and `EditDeviceGroup` | Not carried over: MR Moqui will show device metrics itself; nothing takes their place yet |
+| `Device/DeviceObservability`, `DeviceGroup/DeviceObservability` (Grafana) | The Observability tab of DeviceDetail and GroupDetail (§3.8): a report panel, as System › Monitor › Metrics draws, instead of the Grafana iframe; the Grafana panel of `EditDevice` and `EditDeviceGroup` is not carried over |
 | `DeviceGroup/FindDeviceGroup`, `EditDeviceGroup`, `EditDeviceGroupMembers`, `FindParameter`, `DeviceObservability` | Groups › Find, GroupDetail with Members, Parameters, Content |
 | `DeviceConfig/FindDeviceConfig`, `EditDeviceConfig`, `FindParameter` | Configurations › Find, ConfigDetail |
 | `DeviceRuleSet/FindDeviceRuleSet`, `EditDeviceRuleSet`, `EditDeviceRules` | Processes › Find, ProcessDetail with Tasks |

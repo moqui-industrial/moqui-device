@@ -334,6 +334,7 @@ their Grafana panels, and needs neither Mantle nor mr-boss.
 | `screen/Devices.xml`, `screen/Devices/` | The app's screens; `template/DevicesParts.xml` holds their shared transitions and the record header |
 | `service/moqui/device/DeviceAppServices.xml`, `DevicesApp.js` | The services the screens call, each checking the user's permission |
 | `data/DevicesAppData.xml` | The permissions `DEVICE_VIEW`, `DEVICE_EDIT`, `DEVICE_OPERATE`, the groups `DEVICES`, `DEVICES_ENGINEER`, `DEVICES_OPERATOR` and the root's grant |
+| `data/HVACDemoSeriesData.xml`, `service/moqui/device/DeviceDemoServices.xml` | The HVAC demo's last 7 days of readings and events for the Observability tab (demo data; `load#HvacDemoSeries refresh=true` writes them again from now) |
 | `test/Devices/`, `test/client/Devices/`, `test/acceptance/Devices/` | Access, rules and screen specs; the golden-path walk; the terminal sweep |
 
 A user needs the `DEVICES` group to open it; `DEVICES_ENGINEER` edits the model and

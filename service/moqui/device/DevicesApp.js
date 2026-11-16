@@ -734,6 +734,94 @@ function deleteTask(p) {
     return {}
 }
 
+// ---- observability
+
+// the time ranges an observability view offers, in hours back from now (all: no lower bound)
+const OBSERVABILITY_RANGES = {"1h": 1, "24h": 24, "7d": 168, "30d": 720, "365d": 8760, all: null}
+const MAX_POINTS = 5000
+
+// the devices whose logs a record shows: a device's own, or a group's and its members', through nested groups
+function loggedDevices(deviceId) {
+    const ids = [deviceId]
+    for (let index = 0; index < ids.length; index++) {
+        for (const row of rows(find("moqui.device.DeviceGroupMember").condition("deviceId", ids[index]).selectField("memberDeviceId"))) {
+            if (!ids.includes(row.memberDeviceId)) ids.push(row.memberDeviceId)
+        }
+    }
+    return ids
+}
+
+// a device's observability (the Java DeviceObservability without Grafana): the time series of one logged parameter as a
+// report frame, and its DeviceLog rows, newest first and paged, both within the range
+function observability(p) {
+    require("read")
+    deviceRecord(p.deviceId)
+    const deviceIds = loggedDevices(p.deviceId)
+    const range = Object.hasOwn(OBSERVABILITY_RANGES, p.range) ? p.range : "7d"
+    const hours = OBSERVABILITY_RANGES[range]
+    const since = hours == null ? null : new Date(ec.user.timestampMillis(ec.user.nowTimestamp) - hours * 3600000)
+    // the parameters of these devices that have a log, the selected one first in the choice
+    const parameters = rows(find("moqui.math.ParameterDetail").condition("deviceId", "in", deviceIds).orderBy("deviceId,sequenceNum,parameterCode"))
+    const logged = []
+    for (const parameter of parameters) {
+        if (find("moqui.math.ParameterLog").condition("parameterId", parameter.parameterId).limit(1).count()) logged.push(parameter)
+    }
+    const names = deviceIds.length > 1 ? deviceNameMap(deviceIds) : {}
+    const parameterOptions = logged.map(parameter => ({
+        value: parameter.parameterId,
+        text: (deviceIds.length > 1 ? (names[parameter.deviceId] || parameter.deviceId) + " · " : "") + (parameter.parameterName || parameter.parameterCode)
+    }))
+    const parameterId = logged.some(parameter => parameter.parameterId === p.parameterId) ? p.parameterId
+        : logged.length ? logged[0].parameterId : null
+    let frame = {fields: []}
+    let panel = null
+    let pointCount = 0
+    if (parameterId) {
+        const parameter = logged.find(row => row.parameterId === parameterId)
+        const query = find("moqui.math.ParameterLog").condition("parameterId", parameterId)
+        if (since) query.condition("observedDate", "greater-equals", since)
+        const points = rows(query.orderBy("-observedDate").limit(MAX_POINTS)).reverse()
+        pointCount = points.length
+        const values = points.map(point => (point.numericValue != null ? point.numericValue.toNumber() : null))
+        const label = parameter.parameterName || parameter.parameterCode
+        frame = {
+            fields: [
+                {name: "time", type: "time", values: points.map(point => ec.user.timestampMillis(point.observedDate))},
+                {name: label, type: "number", values}
+            ]
+        }
+        const uom = parameter.parameterUomId ? one("moqui.basic.Uom", {uomId: parameter.parameterUomId}) : null
+        panel = {
+            title: label + (uom ? " (" + (uom.abbreviation || uom.description) + ")" : ""),
+            visualization: "timeSeries",
+            fieldConfig: {defaults: uom && uom.abbreviation ? {unit: uom.abbreviation} : {}}
+        }
+        // a log of texts (states, messages) has no number to draw: its values are listed instead
+        if (values.every(value => value == null)) {
+            panel = null
+            frame = {
+                fields: [
+                    {name: "time", type: "time", values: points.map(point => ec.user.timestampMillis(point.observedDate))},
+                    {name: label, type: "string", values: points.map(point => point.symbolicValue || point.parameterEnumId || null)}
+                ]
+            }
+        }
+    }
+    const logQuery = find("moqui.device.DeviceLog").condition("deviceId", "in", deviceIds)
+    if (since) logQuery.condition("observedDate", "greater-equals", since)
+    logQuery.orderBy("-observedDate,-sequenceNum")
+    const {list, paging} = page(logQuery, "deviceLogList", p, 20)
+    const logNames = deviceNameMap(list.map(row => row.deviceId))
+    const deviceLogList = list.map(row => ({
+        deviceLogId: row.deviceLogId,
+        deviceName: logNames[row.deviceId] || row.deviceId,
+        observedText: dateText(row.observedDate),
+        sequenceNum: row.sequenceNum,
+        payload: String(row.payload || "")
+    }))
+    return Object.assign({range, parameterId, parameterOptions, frame, panel, pointCount, deviceLogList}, paging)
+}
+
 // ---- content
 
 function contentList(p) {
@@ -1039,6 +1127,7 @@ const operations = {
     storeProcess,
     storeTask,
     deleteTask,
+    observability,
     contentList,
     contentFile,
     checkContent,

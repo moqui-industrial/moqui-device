@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- DeviceDetail › Observability, also GroupDetail's (plan/design-devices.md §3.3; in place of the Java DeviceObservability and its
+    Grafana panel, in the style of System › Monitor › Metrics): a logged parameter of the device (a group's and its members') chosen
+    with the range, drawn over time as a report panel (texts listed), and the DeviceLog rows of the same devices in the range, newest
+    first (get#Observability). -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Observability" default-menu-index="5">
+    <parameter name="deviceId" required="true"/>
+    <parameter name="parameterId"/>
+    <parameter name="range"/>
+    <parameter name="pageIndex"/>
+    <actions>
+        <service-call name="moqui.device.DeviceAppServices.get#Observability" out-map="observed" transaction="force-new"
+                ignore-error="true" in-map="{deviceId:deviceId, parameterId:parameterId, range:range, pageIndex:pageIndex}"/>
+        <script>ec.message.clearErrors()</script>
+        <set field="range" from="observed?.range || '7d'"/>
+        <set field="parameterId" from="observed?.parameterId || null"/>
+        <set field="parameterOptions" from="observed?.parameterOptions || []"/>
+        <set field="seriesFrame" from="observed?.frame || {fields: []}"/>
+        <set field="seriesPanel" from="observed?.panel || null"/>
+        <set field="pointCount" from="observed?.pointCount || 0"/>
+        <set field="deviceLogList" from="observed?.deviceLogList || []"/>
+        <set field="deviceLogListCount" from="observed?.deviceLogListCount || 0"/>
+        <set field="deviceLogListPageIndex" from="observed?.deviceLogListPageIndex || 0"/>
+        <set field="deviceLogListPageSize" from="observed?.deviceLogListPageSize || 20"/>
+        <set field="deviceLogListPageMaxIndex" from="observed?.deviceLogListPageMaxIndex || 0"/>
+        <set field="deviceLogListPageRangeLow" from="observed?.deviceLogListPageRangeLow || 0"/>
+        <set field="deviceLogListPageRangeHigh" from="observed?.deviceLogListPageRangeHigh || 0"/>
+        <set field="seriesRows" from="seriesPanel ? [] : (seriesFrame.fields[0]?.values || []).map((at, index) =&gt; ({
+                observedText: ec.l10n.format(at, 'yyyy-MM-dd HH:mm:ss'), value: seriesFrame.fields[1]?.values[index]}))"/>
+    </actions>
+    <widgets>
+        <form-single name="SeriesPicker" transition=".">
+            <field name="deviceId"><default-field><hidden/></default-field></field>
+            <field name="parameterId">
+                <default-field title="Parameter">
+                    <drop-down allow-empty="false">
+                        <list-options list="parameterOptions" key="${value}" text="${text}"/>
+                    </drop-down>
+                </default-field>
+            </field>
+            <field name="range">
+                <default-field title="Range">
+                    <drop-down allow-empty="false">
+                        <option key="1h" text="Last hour"/>
+                        <option key="24h" text="Last 24 hours"/>
+                        <option key="7d" text="Last 7 days"/>
+                        <option key="30d" text="Last 30 days"/>
+                        <option key="365d" text="Last year"/>
+                        <option key="all" text="All"/>
+                    </drop-down>
+                </default-field>
+            </field>
+            <field name="submitButton"><default-field title=""><submit text="Show"/></default-field></field>
+            <field-layout>
+                <field-row-big><field-ref name="parameterId"/><field-ref name="range"/><field-ref name="submitButton"/></field-row-big>
+            </field-layout>
+        </form-single>
+        <label text="No parameter of this device has a log yet. Values are logged by the requests whose purpose is logging."
+                type="p" style="m-muted" condition="!parameterOptions.length"/>
+        <label text="No values of this parameter in the range: choose a longer one." type="p" style="m-muted"
+                condition="parameterId &amp;&amp; !pointCount"/>
+        <section name="SeriesChart" condition="seriesPanel &amp;&amp; pointCount">
+            <widgets>
+                <report-panel id="ParameterSeries" frame="seriesFrame" panel="seriesPanel"/>
+            </widgets>
+        </section>
+        <section name="SeriesValues" condition="!seriesPanel &amp;&amp; pointCount">
+            <widgets>
+                <container-box>
+                    <box-header title="Values"/>
+                    <box-body-nopad>
+                        <form-list name="SeriesRows" list="seriesRows" skip-form="true" paginate="false">
+                            <field name="observedText"><default-field title="Observed"><display/></default-field></field>
+                            <field name="value"><default-field title="Value"><display/></default-field></field>
+                        </form-list>
+                    </box-body-nopad>
+                </container-box>
+            </widgets>
+        </section>
+        <container-box>
+            <box-header title="Device log"/>
+            <box-body-nopad>
+                <form-list name="DeviceLogRows" list="deviceLogList" skip-form="true" paginate="true" select-columns="true"
+                        show-csv-button="true">
+                    <field name="observedText"><default-field title="Observed"><display/></default-field></field>
+                    <field name="deviceName"><default-field title="Device"><display/></default-field></field>
+                    <field name="sequenceNum" align="right"><default-field title="Sequence"><display/></default-field></field>
+                    <field name="payload"><default-field title="Event"><display/></default-field></field>
+                    <columns type="mobile">
+                        <column><field-ref name="observedText"/><field-ref name="deviceName"/></column>
+                        <column><field-ref name="payload"/></column>
+                    </columns>
+                </form-list>
+                <label text="No device log in the range." type="p" style="m-muted q-pa-md" condition="!deviceLogList.length"/>
+            </box-body-nopad>
+        </container-box>
+    </widgets>
+</screen>

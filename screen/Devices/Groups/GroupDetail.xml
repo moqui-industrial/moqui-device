@@ -29,6 +29,8 @@ along with this software (see the LICENSE.md file). If not, see
                 menu-title="Parameters" menu-index="3"/>
         <subscreens-item name="Content" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Content.xml"
                 menu-title="Content" menu-index="4"/>
+        <subscreens-item name="Observability" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Observability.xml"
+                menu-title="Observability" menu-index="5"/>
     </subscreens>
     <actions>
         <service-call name="moqui.device.DeviceAppServices.get#Device" out-map="deviceAnswer" transaction="force-new"

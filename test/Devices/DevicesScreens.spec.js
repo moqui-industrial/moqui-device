@@ -24,6 +24,7 @@ feature("each screen renders with what it shows", {
             ["Devices/DeviceDetail/Overview", {deviceId: "VIRTUAL_PLC_01"}, "Apply task"],
             ["Devices/DeviceDetail/Parameters", {deviceId: "VIRTUAL_PLC_01", lastStandalone: "true"}, "TestPlcCycleTime"],
             ["Devices/DeviceDetail/Content", {deviceId: "VIRTUAL_PLC_01", lastStandalone: "true"}, "Add content"],
+            ["Devices/DeviceDetail/Observability", {deviceId: "VIRTUAL_PLC_01", range: "all", lastStandalone: "true"}, "Device log"],
             ["Groups/Find", {}, "Device groups"],
             ["Groups/GroupDetail/Members", {deviceId: "DG_EDGE_01", lastStandalone: "true"}, "VIRTUAL_PLC_01"],
             ["Configs/Find", {}, "TestPlcFactoryConfig1"],

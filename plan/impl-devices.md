@@ -49,11 +49,19 @@ mr-boss's and mr-pass's, as before this phase; moqui-math over its budget under 
   FindDeviceConfig (parent, description, finds by purpose, control method, trajectory, parent), FindDeviceRuleSet
   (description, parent find) and EditDeviceRules (task id, description); the device Overview took the status, status flow
   and type, trajectory, coordinate system, transformation, geo point and hash of EditDevice.
+- F10: the Observability tab (design §3.8) takes the place of the Java DeviceObservability screens: `get#Observability`
+  builds a report frame of the chosen parameter's log, drawn by `report-panel` as Metrics draws, and pages the device
+  log. A range bound reaches the entity condition as a JavaScript `Date`; a number of milliseconds does not (postgres
+  "date/time field value out of range"). Tested in DevicesRules (the series, a group's members, the range) and
+  DevicesScreens (the tab's render).
+- F11: the HVAC demo's history for Observability, `DeviceDemoServices.load#HvacDemoSeries` called by the demo data
+  `data/HVACDemoSeriesData.xml`: 7 days of readings every 15 minutes, dated back from the load (room and duct temperature
+  and humidity, fan speed and air flow by the occupancy schedule, humidity control as a text log) and the plant's events
+  on working days; written once, `refresh` writes it again from now. A group's logs come through its nested groups.
 
 ### Left for later
 
 - A server-static sweep: mr-boss's `ServerStaticLib` does the check, and this component does not depend on mr-boss.
-- Device metrics in place of the Java screens' Grafana panels (design §5).
 - The attack-surface map of the framework's docs (`docs/security/Attack-Surface-Apps-*.md`) does not list this app; those
   files are mr-moqui's.
 - The JavaScript files were not run through Prettier (none on the machine used); the service module was formatted by the

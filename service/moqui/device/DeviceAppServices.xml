@@ -383,6 +383,52 @@ along with this software (see the LICENSE.md file). If not, see
         </actions>
     </service>
 
+    <service verb="get" noun="Observability" allow-remote="false" read-only="true">
+        <description>A device's or group's observability (the Java DeviceObservability without Grafana): the logged parameters
+            of the device (a group's and its members', through nested groups) to choose from; the time series of the chosen one (the first by default)
+            within the range (1h, 24h, 7d, 30d, 365d or all; 7d by default) as a report frame and panel, at most 5000 points,
+            numbers drawn and texts listed; and the DeviceLog rows of the same devices in the range, newest first, paged.
+            Refuses without DEVICE_VIEW; DEVICE_UNAVAILABLE when the device does not exist.</description>
+        <in-parameters>
+            <parameter name="deviceId" required="true"/>
+            <parameter name="parameterId"/>
+            <parameter name="range"/>
+            <parameter name="pageIndex" type="Integer"/>
+            <parameter name="pageSize" type="Integer"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="range"/>
+            <parameter name="parameterId"/>
+            <parameter name="parameterOptions" type="List"/>
+            <parameter name="frame" type="Map"/>
+            <parameter name="panel" type="Map"/>
+            <parameter name="pointCount" type="Integer"/>
+            <parameter name="deviceLogList" type="List"/>
+            <parameter name="deviceLogListCount" type="Integer"/>
+            <parameter name="deviceLogListPageIndex" type="Integer"/>
+            <parameter name="deviceLogListPageSize" type="Integer"/>
+            <parameter name="deviceLogListPageMaxIndex" type="Integer"/>
+            <parameter name="deviceLogListPageRangeLow" type="Integer"/>
+            <parameter name="deviceLogListPageRangeHigh" type="Integer"/>
+        </out-parameters>
+        <actions>
+            <set field="answer" from="ec.resource.script('component://moqui-device/service/moqui/device/DevicesApp.js').execute('observability', context)"/>
+            <set field="range" from="answer.range"/>
+            <set field="parameterId" from="answer.parameterId"/>
+            <set field="parameterOptions" from="answer.parameterOptions"/>
+            <set field="frame" from="answer.frame"/>
+            <set field="panel" from="answer.panel"/>
+            <set field="pointCount" from="answer.pointCount"/>
+            <set field="deviceLogList" from="answer.deviceLogList"/>
+            <set field="deviceLogListCount" from="answer.deviceLogListCount"/>
+            <set field="deviceLogListPageIndex" from="answer.deviceLogListPageIndex"/>
+            <set field="deviceLogListPageSize" from="answer.deviceLogListPageSize"/>
+            <set field="deviceLogListPageMaxIndex" from="answer.deviceLogListPageMaxIndex"/>
+            <set field="deviceLogListPageRangeLow" from="answer.deviceLogListPageRangeLow"/>
+            <set field="deviceLogListPageRangeHigh" from="answer.deviceLogListPageRangeHigh"/>
+        </actions>
+    </service>
+
     <service verb="get" noun="ContentList" allow-remote="false" read-only="true">
         <description>The content of a device or group, newest first, with who added it and whether the user may transfer each file. Refuses without DEVICE_VIEW.</description>
         <in-parameters>
