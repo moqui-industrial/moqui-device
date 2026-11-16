@@ -254,8 +254,9 @@ along with this software (see the LICENSE.md file). If not, see
             {ruleSetName}_p{priority:02d}.txt, with one name:=value line per parameter.
 
             The files go to the DeviceConnection of requestName: its transportConfig, file:directory or
-            sftp://host:port/directory, with its options (see transfer#DeviceContent). Without a connection they go to
-            the location in the property device_config_export_location and, when set, device_config_export_location_2.
+            sftp://host:port/directory, with its options and credentials (see transfer#DeviceContent). Without a
+            connection they go to the location in the property device_config_export_location and, when set,
+            device_config_export_location_2, whose SFTP credentials can only be usernameEnv and passwordEnv options.
             All or nothing: when a file fails at any destination, every file the export wrote, at every destination, is
             deleted (a file that replaced an older one too), and the service fails with status failed and errorMessage.
 
@@ -298,7 +299,8 @@ along with this software (see the LICENSE.md file). If not, see
                 <if condition="!connection?.transportConfig">
                     <return error="true" message="DeviceConnection ${request.connectionName} of request ${requestName} has no transportConfig destination."/>
                 </if>
-                <set field="destinations" from="[{endpoint:connection.transportConfig, options:connection.options}]"/>
+                <set field="destinations" from="[{endpoint:connection.transportConfig, options:connection.options,
+                        username:connection.username, password:connection.password}]"/>
             </then><else>
                 <set field="destinations" from="[System.getProperty('device_config_export_location'),
                         System.getProperty('device_config_export_location_2')].filter(l => l).map(l => ({endpoint:l}))"/>
@@ -326,12 +328,14 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="get" noun="TransferDestination">
-        <description>The destination of a file transfer DeviceRequest: its brokerUri, else the transportConfig of
-            its DeviceConnection, with the options of the connection.</description>
+        <description>The destination of a file transfer DeviceRequest: the transportConfig of its DeviceConnection,
+            with the options and the credentials of the connection.</description>
         <in-parameters><parameter name="requestName" required="true"/></in-parameters>
         <out-parameters>
             <parameter name="endpoint"/>
             <parameter name="options"/>
+            <parameter name="username"/>
+            <parameter name="password"/>
         </out-parameters>
         <actions>
             <entity-find-one entity-name="moqui.device.DeviceRequest" value-field="target" cache="true">
@@ -343,10 +347,12 @@ along with this software (see the LICENSE.md file). If not, see
                     <field-map field-name="connectionName" from="target.connectionName"/>
                 </entity-find-one>
             </if>
-            <set field="endpoint" from="target.brokerUri || connection?.transportConfig || null"/>
+            <set field="endpoint" from="connection?.transportConfig || null"/>
             <set field="options" from="connection?.options || null"/>
+            <set field="username" from="connection?.username || null"/>
+            <set field="password" from="connection?.password || null"/>
             <if condition="!endpoint">
-                <return error="true" message="DeviceRequest ${requestName} has no destination: set its brokerUri or the transportConfig of its DeviceConnection."/>
+                <return error="true" message="DeviceRequest ${requestName} has no destination: set its DeviceConnection, with a transportConfig."/>
             </if>
         </actions>
     </service>
@@ -364,10 +370,12 @@ along with this software (see the LICENSE.md file). If not, see
             The file is read from DeviceContent.contentLocation through the resource facade and written to the
             destination of the DrtContentTransfer DeviceRequest requestName.
 
-            Destination (DeviceRequest.brokerUri, else DeviceConnection.transportConfig): file:directory, written through
-            the resource facade, or sftp://host:port/directory, written with SftpClient. SFTP options, in
-            DeviceConnection.options or the query of the destination: host-key-fingerprint (SHA256:..., required),
-            username and password or private-key-file; usernameEnv and passwordEnv name an environment variable instead.
+            Destination (the transportConfig of the DeviceConnection of the request): file:directory, written through
+            the resource facade, or sftp://host:port/directory, written with SftpClient. SFTP credentials:
+            DeviceConnection.username and password (stored encrypted), or the options usernameEnv and passwordEnv, which
+            name an environment variable or property; or a private-key-file option instead of the password. Other SFTP
+            options, in DeviceConnection.options or the query of the destination: host-key-fingerprint (SHA256:...,
+            required). A username or password option is refused: credentials are not stored in clear.
             A file that fails to be written is not left in part: what was written is deleted and the service fails.
         </description>
         <in-parameters>
@@ -390,7 +398,8 @@ along with this software (see the LICENSE.md file). If not, see
                     in-map="{requestName:requestName}"/>
             <set field="devices" from="ec.resource.script('component://moqui-device/service/moqui/device/Devices.js')"/>
             <set field="answer" from="devices.execute('transferFiles', {endpoint:destination.endpoint,
-                    options:destination.options, files:content.transferFiles})"/>
+                    options:destination.options, username:destination.username, password:destination.password,
+                    files:content.transferFiles})"/>
             <set field="status" value="completed"/>
             <set field="transferredFiles" from="answer.transferredFiles"/>
             <log level="info" message="DeviceContent ${deviceContentId} transferred with request ${requestName}: ${transferredFiles.join(', ')}"/>
@@ -461,7 +470,7 @@ along with this software (see the LICENSE.md file). If not, see
             Publishes a planned trajectory for immediate execution (the ephemeral path; a recipe exported with
             export#DeviceConfig is the persistent one). The waypoints of the ApproximatedFunction (get#TrajectoryAxes) go
             out as one JSON message through run#DeviceRequest (the payload parameter): the DeviceRequest is an MQTT write
-            without items, run by its runServiceName, whose brokerUri is the broker and whose query is the topic that
+            without items, run by its runServiceName, on the broker of device_broker_uri, whose query is the topic that
             MqttParameterSub on the PLC subscribes to; JsonToParametersMapper there expects the keys X,Y,Z,A,B,C (TCP pose) or J1..J6 (joint space).
 
             Message:

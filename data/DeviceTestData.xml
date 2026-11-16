@@ -1094,10 +1094,18 @@ Grant of Patent License.
             description="MQTT write request that publishes the current PLC parameter values"
             onlyChangedParameters="N"
             routerEnumId="DrrMQTTBroker"
-            brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             query="iot/parameters/out"
             timeout="30000"
             fromDate="2026-06-28 00:00:00"/>
+
+    <moqui.device.DeviceConnection
+            connectionName="VIRTUAL_PLC_01_TransferPlc"
+            deviceId="VIRTUAL_PLC_01"
+            connectionTypeEnumId="DctDirectConnection"
+            purposeEnumId="DcpMaintenance"
+            driverEnumId="DcdFile"
+            transportConfig="file:target/transferred-content/plc"
+            description="Content transfer destination of the minimal test PLC"/>
 
     <moqui.device.DeviceRequest
             requestName="VIRTUAL_PLC_01_TransferContent"
@@ -1109,9 +1117,18 @@ Grant of Patent License.
             sequenceNum="30"
             description="File transfer request for the minimal test PLC"
             routerEnumId="DrrDirect"
-            brokerUri="file:target/transferred-content/plc"
+            connectionName="VIRTUAL_PLC_01_TransferPlc"
             timeout="30000"
             fromDate="2026-06-28 00:00:00"/>
+
+    <moqui.device.DeviceConnection
+            connectionName="VIRTUAL_PLC_01_TransferGroup"
+            deviceId="VIRTUAL_PLC_01"
+            connectionTypeEnumId="DctDirectConnection"
+            purposeEnumId="DcpMaintenance"
+            driverEnumId="DcdFile"
+            transportConfig="file:target/transferred-content/device-group"
+            description="Content transfer destination of the minimal test device group"/>
 
     <moqui.device.DeviceRequest
             requestName="DG_EDGE_01_TransferContent"
@@ -1123,7 +1140,7 @@ Grant of Patent License.
             sequenceNum="31"
             description="File transfer request for the minimal test device group, written to its controller"
             routerEnumId="DrrDirect"
-            brokerUri="file:target/transferred-content/device-group"
+            connectionName="VIRTUAL_PLC_01_TransferGroup"
             timeout="30000"
             fromDate="2026-06-28 00:00:00"/>
 
@@ -1153,7 +1170,6 @@ Grant of Patent License.
             sequenceNum="30"
             description="Generic MQTT publish request mirroring moqui-device-gateway integration tests"
             routerEnumId="DrrMQTTBroker"
-            brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             onlyChangedParameters="N"
             fromDate="2026-06-28 00:00:00"/>
 
@@ -1183,7 +1199,6 @@ Grant of Patent License.
             sequenceNum="40"
             description="Generic MQTT subscription request mirroring moqui-device-gateway integration tests"
             routerEnumId="DrrMQTTBroker"
-            brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem
@@ -1213,7 +1228,6 @@ Grant of Patent License.
             sequenceNum="50"
             description="Generic MQTT unsubscribe request mirroring moqui-device-gateway integration tests"
             routerEnumId="DrrMQTTBroker"
-            brokerUri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;userName=artemis&amp;password=artemis"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceConnection
@@ -1322,7 +1336,6 @@ Grant of Patent License.
             sequenceNum="100"
             description="Standard live-parameter MQTT request for moqui-plc MqttParameterSub"
             routerEnumId="DrrBroker"
-            brokerUri="paho-mqtt5:virtual_plc_live?brokerUrl=tcp://localhost:1883"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem
@@ -1343,7 +1356,6 @@ Grant of Patent License.
             sequenceNum="110"
             description="Standard moqui-plc framework status subscription"
             routerEnumId="DrrBroker"
-            brokerUri="paho-mqtt5:framework_status?brokerUrl=tcp://localhost:1883"
             fromDate="2026-06-28 00:00:00"/>
 
     <moqui.device.DeviceRequestItem requestName="VIRTUAL_PLC_01_FrameworkStatusRead" parameterId="FwFaultParam" sequenceNum="10" requestItemName="fault" query="fault" itemTypeEnumId="DritBool"/>
@@ -1364,7 +1376,6 @@ Grant of Patent License.
             sequenceNum="120"
             description="Standard moqui-plc framework control write request"
             routerEnumId="DrrBroker"
-            brokerUri="paho-mqtt5:framework_control?brokerUrl=tcp://localhost:1883"
             onlyChangedParameters="N"
             fromDate="2026-06-28 00:00:00"/>
 

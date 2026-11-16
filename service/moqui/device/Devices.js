@@ -358,9 +358,11 @@ const fileName = name => {
         fail("A transferred file needs a file name, not a path: " + text)
     return text
 }
-// A credential option, or the environment variable or property that its ...Env option names.
-function credential(options, name) {
-    const value = options[name],
+// A credential of the DeviceConnection, or the environment variable or property that its ...Env option names. A
+// credential in the options would be stored in clear: it is refused.
+function credential(spec, options, name) {
+    if (options[name] != null) fail("Store the " + name + " of the destination in DeviceConnection." + name + ", not in its options")
+    const value = nonEmpty(spec[name]),
         variable = options[name + "Env"]
     if (value != null && variable != null) fail("Set the " + name + " or the " + name + "Env of the destination, not both")
     if (variable == null) return value
@@ -370,11 +372,12 @@ function credential(options, name) {
 }
 
 // A destination to write files to: file:directory through the resource facade, or sftp://host:port/directory with
-// SftpClient (options host-key-fingerprint, required, username and password or private-key-file, each also as ...Env).
+// SftpClient (option host-key-fingerprint, required; the username and password of the connection or the options
+// usernameEnv and passwordEnv; or a private-key-file option).
 // open() connects, write(file) returns where the file went, remove(where) deletes it, close() disconnects.
 function destination(spec) {
     let endpoint = nonEmpty(spec.endpoint)
-    if (!endpoint) fail("The transfer has no destination: set DeviceRequest.brokerUri or DeviceConnection.transportConfig")
+    if (!endpoint) fail("The transfer has no destination: set the DeviceConnection of the request, with a transportConfig")
     const options = destinationOptions(spec.options)
     const query = endpoint.indexOf("?")
     if (query >= 0) {
@@ -402,9 +405,10 @@ function destination(spec) {
     if (!sftp) fail("Unsupported transfer destination " + endpoint + ": use file:directory or sftp://host:port/directory")
     const fingerprint = options["host-key-fingerprint"]
     if (!fingerprint || !fingerprint.startsWith("SHA256:")) fail("SFTP requires a pinned SHA256: host-key-fingerprint")
-    const username = credential(options, "username") || credential(options, "userName")
+    if (options.userName != null) fail("Store the username of the destination in DeviceConnection.username, not in its options")
+    const username = credential(spec, options, "username")
     if (!username) fail("SFTP requires a username")
-    const password = credential(options, "password")
+    const password = credential(spec, options, "password")
     const privateKey = options["private-key-file"]
     if (password == null && !privateKey) fail("SFTP requires a password or a private-key-file")
     const directory = (sftp[3] || "/").replace(/\/+$/, "") || "/"
@@ -448,7 +452,9 @@ function transferFiles(p) {
     })
     if (!files.length) fail("No files to transfer")
     if (new Set(files.map(file => file.name)).size !== files.length) fail("A transfer writes each file name once")
-    const targets = Array.from(p.destinations || [{endpoint: p.endpoint, options: p.options}]).map(destination)
+    const targets = Array.from(
+        p.destinations || [{endpoint: p.endpoint, options: p.options, username: p.username, password: p.password}]
+    ).map(destination)
     if (!targets.length) fail("The transfer has no destination")
     const written = []
     try {

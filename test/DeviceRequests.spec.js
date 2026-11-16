@@ -7,14 +7,6 @@
 spec({
     setup() {
         ec.artifactExecution.disableAuthz()
-        const broker = System.getProperty("gateway_mqtt_test_broker")
-        if (broker)
-            for (const row of ec.entity.find("moqui.device.DeviceRequest").list()) {
-                if (row.brokerUri?.includes("tcp://localhost:1883")) {
-                    row.brokerUri = row.brokerUri.replace("tcp://localhost:1883", broker)
-                    row.update()
-                }
-            }
     },
     cleanup() {
         ec.artifactExecution.enableAuthz()
@@ -30,8 +22,6 @@ const removeFile = path => {
         /* not there */
     }
 }
-const mqttBroker = System.getProperty("gateway_mqtt_test_broker") || "tcp://localhost:1883"
-const mqttUri = "paho-mqtt5:?brokerUrl=" + mqttBroker + "&userName=artemis&password=artemis"
 const storeRequest = fields => call("store#moqui.device.DeviceRequest", Object.assign({timeout: 5000}, fields))
 const deleteRequests = (...names) =>
     names.forEach(requestName => {
@@ -45,7 +35,6 @@ const publish = (topic, payload) => {
         deviceId: "VIRTUAL_PLC_01",
         requestTypeEnumId: "DrtWrite",
         routerEnumId: "DrrMQTTBroker",
-        brokerUri: mqttUri,
         query: topic
     })
     return call("moqui.device.DeviceServices.run#DeviceRequest", {requestName: "GatewayTestPublish", payload})
@@ -77,7 +66,7 @@ const failureOf = action => {
     }
 }
 
-const exportTo = (requestName, connectionName, transportConfig, options) => {
+const exportTo = (requestName, connectionName, transportConfig, options, credentials) => {
     call("store#moqui.device.DeviceConnection", {
         connectionName,
         deviceId: "VIRTUAL_PLC_01",
@@ -85,6 +74,7 @@ const exportTo = (requestName, connectionName, transportConfig, options) => {
         purposeEnumId: "DcpMaintenance",
         transportConfig,
         options,
+        ...credentials,
         driverEnumId: transportConfig.startsWith("sftp:") ? "DcdSftp" : "DcdFile"
     })
     call("update#moqui.device.DeviceRequest", {requestName, connectionName})
@@ -199,9 +189,9 @@ feature("a content transfer writes the DeviceContent to the destination of its r
             contentTypeEnumId: "DCntImage",
             contentLocation: location
         })
-        call("update#moqui.device.DeviceRequest", {
-            requestName: "VIRTUAL_PLC_01_TransferContent",
-            brokerUri: `file:${specDir}/content`
+        call("update#moqui.device.DeviceConnection", {
+            connectionName: "VIRTUAL_PLC_01_TransferPlc",
+            transportConfig: `file:${specDir}/content`
         })
         const out = call("moqui.device.DeviceServices.transfer#DeviceContent", {
             requestName: "VIRTUAL_PLC_01_TransferContent",
@@ -221,9 +211,9 @@ feature("a content transfer writes the DeviceContent to the destination of its r
         out.bytes.join(",") == "0,255,16"
     },
     cleanup() {
-        call("update#moqui.device.DeviceRequest", {
-            requestName: "VIRTUAL_PLC_01_TransferContent",
-            brokerUri: "file:target/transferred-content/plc"
+        call("update#moqui.device.DeviceConnection", {
+            connectionName: "VIRTUAL_PLC_01_TransferPlc",
+            transportConfig: "file:target/transferred-content/plc"
         })
         call("delete#moqui.device.DeviceContent", {deviceContentId: "GatewayTransferContent"})
         removeFile("/tmp/moqui-gateway-transfer.bin")
@@ -304,16 +294,25 @@ feature("an existing parameter outside the request items is refused", {
     }
 })
 
-feature("PLC logs cannot impersonate a device outside the owner's hierarchy", {
+feature("the process PLC of a group logs for the group's devices, and only while it is the alive process PLC", {
     when() {
-        return call("moqui.device.DeviceAcquisitionServices.store#LogSamples", {
+        // VIRTUAL_PLC_01 is the DgmpProcessPLC of DG_EDGE_01; DRV_EDGE_01 is its sibling there
+        const store = message => call("moqui.device.DeviceAcquisitionServices.store#LogSamples", {
             requestName: "TestPlcOpcUaReadReq01",
-            samples: [{deviceId: "DRV_EDGE_01", value: {message: "outside hierarchy"}}]
+            samples: [{deviceId: "DRV_EDGE_01", value: {message}}]
         })
+        const accepted = store("sibling log")
+        setMemberStatus("DG_EDGE_01", "VIRTUAL_PLC_01", "DgmsDown")
+        try {
+            return {accepted, rejected: store("log of a former process PLC")}
+        } finally {
+            setMemberStatus("DG_EDGE_01", "VIRTUAL_PLC_01", "DgmsAlive")
+        }
     },
     then(out) {
-        out.failedCount == 1
-        out.results[0].error.includes("hierarchy")
+        out.accepted.storedCount == 1
+        out.rejected.failedCount == 1
+        out.rejected.results[0].error.includes("hierarchy")
     }
 })
 
@@ -382,6 +381,26 @@ feature("an inactive controller membership excludes its subscriptions", {
     }
 })
 
+feature("a destination with its credentials in the options is refused: they belong in the DeviceConnection", {
+    allowMessageErrors: true,
+    when() {
+        const failures = {}
+        for (const [name, options] of [["username", "username=foo"], ["password", "password=pass"]]) {
+            exportTo("VIRTUAL_PLC_01_ExportProcess", "GatewayTestClearCredential",
+                "sftp://127.0.0.1:2223/upload?host-key-fingerprint=SHA256:test", options, {username: "foo"})
+            failures[name] = failureOf(() => call("moqui.device.DeviceServices.export#DeviceConfig",
+                {deviceRuleSetId: "TestPlcGatewayRuleSet1", requestName: "VIRTUAL_PLC_01_ExportProcess"}))
+            ec.message.clearErrors()
+            unexport("VIRTUAL_PLC_01_ExportProcess", "GatewayTestClearCredential")
+        }
+        return failures
+    },
+    then(out) {
+        out.username.includes("DeviceConnection.username")
+        out.password.includes("DeviceConnection.password")
+    }
+})
+
 feature("a recipe export reaches an SFTP server and can replace the same recipe", {
     // `moqui test` does not install the framework's SFTP client (moqui-host installs it when the server starts), so
     // this needs gateway_sftp_test and a test runner that does
@@ -392,7 +411,8 @@ feature("a recipe export reaches an SFTP server and can replace the same recipe"
             "VIRTUAL_PLC_01_ExportProcess",
             "GatewayTestSftp",
             `sftp://127.0.0.1:2223/upload?host-key-fingerprint=${encodeURIComponent(System.getProperty("gateway_sftp_fingerprint"))}`,
-            "username=foo&password=pass"
+            null,
+            {username: "foo", password: "pass"}
         )
         const parameters = {deviceRuleSetId: "TestPlcGatewayRuleSet1", requestName: "VIRTUAL_PLC_01_ExportProcess"}
         call("moqui.device.DeviceServices.export#DeviceConfig", parameters)
@@ -431,23 +451,28 @@ feature("a group log request accepts its live members but not an inactive member
             requestName: "GatewayGroupLog",
             deviceId: "VIRTUAL_PLC_01",
             requestTypeEnumId: "DrtSubscribe",
-            routerEnumId: "DrrMQTTBroker",
-            brokerUri: mqttUri
+            routerEnumId: "DrrMQTTBroker"
         })
         const samples = [{deviceId: "DRV_EDGE_01", value: {message: "group log ownership test"}}]
-        const accepted = call("moqui.device.DeviceAcquisitionServices.store#LogSamples", {
-            requestName: "GatewayGroupLog",
-            samples
-        })
-        setMemberStatus("VIRTUAL_PLC_01", "DRV_EDGE_01", "DgmsDown")
+        // only the explicit group counts here, not the PLC's process-PLC role in DG_EDGE_01
+        setMemberStatus("DG_EDGE_01", "VIRTUAL_PLC_01", "DgmsDown")
         try {
-            const rejected = call("moqui.device.DeviceAcquisitionServices.store#LogSamples", {
+            const accepted = call("moqui.device.DeviceAcquisitionServices.store#LogSamples", {
                 requestName: "GatewayGroupLog",
                 samples
             })
-            return {accepted, rejected}
+            setMemberStatus("VIRTUAL_PLC_01", "DRV_EDGE_01", "DgmsDown")
+            try {
+                const rejected = call("moqui.device.DeviceAcquisitionServices.store#LogSamples", {
+                    requestName: "GatewayGroupLog",
+                    samples
+                })
+                return {accepted, rejected}
+            } finally {
+                setMemberStatus("VIRTUAL_PLC_01", "DRV_EDGE_01", "DgmsAlive")
+            }
         } finally {
-            setMemberStatus("VIRTUAL_PLC_01", "DRV_EDGE_01", "DgmsAlive")
+            setMemberStatus("DG_EDGE_01", "VIRTUAL_PLC_01", "DgmsAlive")
         }
     },
     then(out) {
@@ -458,5 +483,23 @@ feature("a group log request accepts its live members but not an inactive member
         deleteRequests("GatewayGroupLog")
         call("delete#moqui.device.DeviceGroupMember", {deviceId: "VIRTUAL_PLC_01", memberDeviceId: "DRV_EDGE_01"})
         call("delete#moqui.device.DeviceGroup", {deviceId: "VIRTUAL_PLC_01"})
+    }
+})
+
+feature("the samples a full gateway queue discarded are notified with their count", {
+    when() {
+        const notices = () => ec.entity.find("moqui.security.user.NotificationMessage")
+            .condition("topic", "DeviceInboundFailed").useCache(false).list()
+        const before = notices().length
+        call("moqui.device.DeviceAcquisitionServices.notify#InboundState", {
+            requestName: "TestPlcOpcUaReadReq01", deviceId: "VIRTUAL_PLC_01", eventType: "queueFull",
+            discardedCount: 42, queueCapacity: 1024
+        })
+        const after = notices()
+        return {added: after.length - before, texts: after.map(n => String(n.messageJson || ""))}
+    },
+    then(out) {
+        out.added == 1
+        out.texts.some(t => t.includes("42 values") && t.includes("1024 batches") && t.includes("queueFull"))
     }
 })

@@ -172,16 +172,29 @@ along with this software (see the LICENSE.md file). If not, see
         <description>
             Tells the users, with a notification on the topic DeviceInboundFailed or DeviceInboundRecovered, that the samples of a
             subscription or polling request have failed to store for device_gateway_error_notification_seconds
-            (inboundError), or store again after such a notice (inboundRecovered). Called by the persistence worker.
+            (inboundError), store again after such a notice (inboundRecovered), or were discarded because the gateway
+            persistence queue was full (queueFull: polling and OPC UA samples, which no broker keeps). Called by the
+            persistence worker.
         </description>
         <in-parameters>
             <parameter name="requestName" required="true"/>
             <parameter name="deviceId" required="true"/>
-            <parameter name="eventType" required="true"><description>inboundError or inboundRecovered</description></parameter>
+            <parameter name="eventType" required="true"><description>inboundError, inboundRecovered or queueFull</description></parameter>
             <parameter name="errorMessage"/>
             <parameter name="errorDurationSeconds" type="Long"/>
+            <parameter name="discardedCount" type="Long"><description>queueFull: the samples discarded since the last notice.</description></parameter>
+            <parameter name="queueCapacity" type="Long"><description>queueFull: device_gateway_queue_capacity, in batches.</description></parameter>
         </in-parameters>
         <actions>
+            <if condition="eventType === 'queueFull'">
+                <service-call name="moqui.device.DeviceServices.send#DeviceNotification" in-map="{deviceId:deviceId,
+                        topic:'DeviceInboundFailed', requestName:requestName, eventType:eventType,
+                        title:'Device data discarded (' + requestName + ')',
+                        text:(discardedCount || 0) + ' values of request ' + requestName + ' were discarded: the gateway'
+                            + ' persistence queue (' + (queueCapacity || 0) + ' batches) was full. Check the database, or'
+                            + ' raise device_gateway_queue_capacity.'}"/>
+                <return/>
+            </if>
             <set field="failing" from="eventType === 'inboundError'"/>
             <service-call name="moqui.device.DeviceServices.send#DeviceNotification" in-map="{deviceId:deviceId,
                     topic:(failing ? 'DeviceInboundFailed' : 'DeviceInboundRecovered'),
@@ -244,7 +257,8 @@ along with this software (see the LICENSE.md file). If not, see
     <service verb="store" noun="LogSamples" type="rust" location="moqui_device::inbound::store_samples"
             authenticate="false" transaction="ignore">
         <description>Store decoded diagnostic events: ParameterLog for an exact parameterId, otherwise DeviceLog.
-            The device must be the request owner or an alive descendant in its explicit device group hierarchy.
+            The device must be the request owner, an alive descendant in its explicit device group hierarchy, or an
+            alive device of a group in which the owner is the alive process PLC (DgmpProcessPLC member).
             Optional logValueKind is numeric, enumeration or message. Events always create logs.
             This service performs no wire-format decoding and needs no driver installed.</description>
         <implements service="moqui.device.DeviceAcquisitionServices.store#Samples"/>

@@ -417,7 +417,11 @@ polling cycle whose values did not change reads no Parameter from the database; 
 the Parameters that change are read again, locked, and written. The cache is
 cleared by every write through the Entity Engine, which is enough on one node.
 `store#LogSamples` stores PLC log events: an event with a `source` becomes a
-`ParameterLog` of that Parameter, an event without one a `DeviceLog`. Use
+`ParameterLog` of that Parameter, an event without one a `DeviceLog`. An event may
+name the request's device, an alive member of the groups that device heads
+(recursively), or an alive device of a group in which that device is the alive
+process PLC (`DgmpProcessPLC`): a PLC logs for the pumps and valves it controls.
+Any other device is refused. Use
 `after#Samples` for failure-isolated after-store SECAs; it runs only for a batch that
 wrote at least one row, so an unchanged polling cycle calls no service.
 
@@ -469,16 +473,18 @@ moqui.device.DeviceServices.transfer#DeviceContent
 
 It reads the file from `DeviceContent.contentLocation` through the resource
 facade and writes it to the destination of the `DrtContentTransfer` request; the
-content must belong to the device of the request. The destination is its
-`brokerUri`, else the `transportConfig` of its `DeviceConnection`:
+content must belong to the device of the request. The destination is the
+`transportConfig` of the request's `DeviceConnection`:
 
 - `file:/mnt/cnc-share/programs`, written through the resource facade;
 - `sftp://cnc1.factory.local:22/programs`, written with the framework's
-  `SftpClient`. The options, in `DeviceConnection.options` or the query of the
-  destination, are `host-key-fingerprint` (`SHA256:...`, required), `username`
-  and `password` or `private-key-file`; `usernameEnv` and `passwordEnv` name an
-  environment variable instead. Read the fingerprint with
-  `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`.
+  `SftpClient`. The user is `DeviceConnection.username` and `password`, stored
+  encrypted: the user installed on the PLC and replicated in Moqui. The options
+  `usernameEnv` and `passwordEnv` name an environment variable or property
+  instead, and `private-key-file` replaces the password. `host-key-fingerprint`
+  (`SHA256:...`, required) goes in `DeviceConnection.options` or the query of
+  the destination. A `username` or `password` option is refused. Read the
+  fingerprint with `ssh-keyscan -t ed25519 host | ssh-keygen -lf -`.
 
 `DeviceTestData.xml` ships `VIRTUAL_PLC_01_TransferContent` and
 `DG_EDGE_01_TransferContent`. The SimpleScreens device screens find these
@@ -661,8 +667,8 @@ path end-to-end:
 | `Device` | `deviceId = moqui-device-gateway1` |
 | `DeviceRequest` | `requestName = ROBOT_ARM_TRAJECTORY_EXPORT` |
 
-The `DeviceRequest` is an MQTT write without items: `brokerUri` is the broker
-(`mqtt://localhost:1883`) and `query` the topic (`moqui/robot/arm1/trajectory`).
+The `DeviceRequest` is an MQTT write without items, on the broker of
+`device_broker_uri`; `query` is the topic (`moqui/robot/arm1/trajectory`).
 
 To dispatch after planning:
 

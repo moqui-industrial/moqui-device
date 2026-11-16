@@ -407,22 +407,24 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="purposeEnumId" type="id"/>
         <field name="description" type="text-medium"/>
 
-        <field name="userId" type="id">
-            <description>The user account used to access the device if it has authentication mechanisms.</description></field>
+        <field name="username" type="text-medium" encrypt="true">
+            <description>The user the device knows, for a device with authentication: the user installed on the PLC
+                and replicated here. Stored encrypted (entity_ds_crypt_pass).</description></field>
+        <field name="password" type="text-medium" encrypt="true">
+            <description>The password of username, stored encrypted (entity_ds_crypt_pass).</description></field>
         <!-- Url general format: {driver code}:{transport code}://{transportConfig}?{options} -->
         <field name="driverEnumId" type="id" not-null="true"/>
         <field name="transportEnumId" type="id"/>
         <field name="transportConfig" type="text-medium"/>
         <field name="options" type="text-long"><description>Query-string or JSON options of the driver, for example the
-            usernameEnv, passwordEnv and host-key-fingerprint of an SFTP connection.</description></field>
+            host-key-fingerprint of an SFTP connection. No credentials: they go in username and password, or
+            usernameEnv and passwordEnv name an environment variable or property that holds them.</description></field>
 
         <relationship type="one" related="moqui.device.PhysicalDevice" short-alias="device"/>
         <relationship type="one" title="DeviceConnectionType" related="moqui.basic.Enumeration" short-alias="type">
             <key-map field-name="connectionTypeEnumId"/></relationship>
         <relationship type="one" title="DeviceConnectionPurpose" related="moqui.basic.Enumeration" short-alias="purpose">
             <key-map field-name="purposeEnumId"/></relationship>
-        <relationship type="one-nofk" related="moqui.security.UserAccount">
-            <description>No FK in order to allow externally authenticated users.</description></relationship>
         <relationship type="one" title="DeviceConnectionDriver" related="moqui.basic.Enumeration" short-alias="driver">
             <key-map field-name="driverEnumId"/></relationship>
         <relationship type="one" title="DeviceConnectionTransport" related="moqui.basic.Enumeration" short-alias="transport">
@@ -497,9 +499,10 @@ along with this software (see the LICENSE.md file). If not, see
 
         <field name="routerEnumId" type="id" not-null="true"/>
         <field name="connectionName" type="text-short">
-            <description>The device connection used to run this request. For direct routing only.</description></field>
-        <field name="brokerUri" type="text-medium"> 
-            <description>If enabled, use this broker (MQTT/AMQP...). If null, use default/fallback from Moqui conf.</description></field>
+            <description>The device connection of a direct request (routerEnumId DrrDirect): its endpoint, driver and
+                credentials, or the destination of a file transfer. A broker request (routerEnumId DrrBroker or a child)
+                has none: it uses the broker of the properties device_broker_uri, device_broker_username and
+                device_broker_password.</description></field>
         <field name="timeout" type="number-integer">
             <description>The maximum time in milliseconds to wait before timeout.</description></field>
         <field name="pollingInterval" type="number-integer">

@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <moqui-conf xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/moqui-conf-3.xsd">
     <default-property name="onnx.session.cache.max" value="8"/>
-    <!-- Default MQTT broker endpoint when DeviceRequest.brokerUri is not specified -->
-    <default-property name="device_mqtt_broker_uri" value="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1"/>
+    <!-- The broker of every broker request (routerEnumId DrrBroker or a child), one per instance: an MQTT 5 broker
+         as paho-mqtt5:?brokerUrl=tcp://host:1883 (ssl:// for TLS) or mqtt://host:1883, with options such as qos;
+         the qos and retained of a DeviceRequest override those of the URI. Its user and password go in the two
+         properties below, the password in runtime/.env, never in the URI. -->
+    <default-property name="device_broker_uri" value="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1"/>
+    <default-property name="device_broker_username" value=""/>
+    <default-property name="device_broker_password" value=""/>
     <!-- The DeviceGroupMember (DgmpEdgeGateway) Device this instance is. Set: subscriptions of the controllers in its
          scope are restored after a start and requests outside its scope are refused; empty: no restoration, no scope. -->
     <default-property name="device_gateway_device_id" value=""/>

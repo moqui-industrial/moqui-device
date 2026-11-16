@@ -105,9 +105,9 @@ Camel routes became these services:
 Data changes: the routing requests are removed, and the requests that did the
 work take the names the device screens look for (`{deviceId}_SyncParameters`,
 `{deviceId}_TransferContent`); the export requests (`{deviceId}_ExportProcess`)
-belong to the device; `ROBOT_ARM_TRAJECTORY_EXPORT` has the broker as `brokerUri`
-and a timeout in milliseconds; the driver enumeration has `DcdMqtt`, `DcdFile`,
-`DcdSftp` and `DcdEtherCAT`. Polling is a `DrtRead` with a `pollingInterval`;
+belong to the device; `ROBOT_ARM_TRAJECTORY_EXPORT` has a timeout in
+milliseconds; the driver enumeration has `DcdMqtt`, `DcdFile`, `DcdSftp` and
+`DcdEtherCAT`. Polling is a `DrtRead` with a `pollingInterval`;
 `DrtCyclic` is a subscription sampled by the device, which MQTT does not have, so
 the MQTT test requests that were `DrtCyclic` are `DrtSubscribe`.
 

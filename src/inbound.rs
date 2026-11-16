@@ -59,8 +59,26 @@ fn find(ef: &EntityFacade, name: &str, key: &str, id: &str, cache: bool) -> Resu
         .ok_or_else(|| Error::new(format!("{name} record not found: {id}")))
 }
 
+fn alive(member: &EntityValue) -> bool {
+    entity_text(member, "statusId").is_none_or(|s| s == "DgmsAlive")
+}
+
+/// Whether a PLC log of `root` may carry events of `id`: the devices `root` heads, recursively, and the whole of each
+/// group in which `root` is the process PLC (a DgmpProcessPLC member), since that PLC logs for its sibling devices.
 fn contains(ef: &EntityFacade, root: &str, id: &str) -> Result<bool, Error> {
     let mut pending = vec![root.to_string()];
+    for membership in ef
+        .find("moqui.device.DeviceGroupMember")?
+        .eq("memberDeviceId", Value::string(root))
+        .eq("purposeEnumId", Value::string("DgmpProcessPLC"))
+        .use_cache(true)
+        .list()?
+        .iter()
+    {
+        if let Some(group) = entity_text(membership, "deviceId").filter(|_| alive(membership)) {
+            pending.push(group.to_string());
+        }
+    }
     let mut seen = HashSet::new();
     while let Some(group) = pending.pop() {
         if !seen.insert(group.clone()) {
@@ -76,7 +94,7 @@ fn contains(ef: &EntityFacade, root: &str, id: &str) -> Result<bool, Error> {
             .list()?
             .iter()
         {
-            if entity_text(member, "statusId").is_some_and(|s| s != "DgmsAlive") {
+            if !alive(member) {
                 continue;
             }
             if let Some(child) = entity_text(member, "memberDeviceId") {
