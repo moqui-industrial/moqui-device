@@ -350,7 +350,7 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="store" noun="Task" allow-remote="false">
-        <description>Creates a task of a process (a name is required) or updates one of it (deviceRuleId); its device and configuration must exist. Refuses without DEVICE_EDIT.</description>
+        <description>Creates a task of a process (a name is required) or updates one of it (deviceRuleId); its device and configuration must exist, and a part (parentRuleId) belongs to a task of the same process and is not a part of itself (DEVICE_TASK_PARENT). Refuses without DEVICE_EDIT.</description>
         <in-parameters>
             <parameter name="deviceRuleSetId" required="true"/>
             <parameter name="deviceRuleId"/>
@@ -361,6 +361,7 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="description"/>
             <parameter name="priority" type="Integer"/>
             <parameter name="fromDate" type="Timestamp"/>
+            <parameter name="parentRuleId"><description>The task this one is a part of (a recipe's device configuration).</description></parameter>
             <parameter name="thruDate" type="Timestamp"/>
         </in-parameters>
         <out-parameters>
@@ -373,7 +374,7 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="delete" noun="Task" allow-remote="false">
-        <description>Deletes a task no device runs (DEVICE_TASK_IN_USE otherwise). Refuses without DEVICE_EDIT.</description>
+        <description>Deletes a task no device runs (DEVICE_TASK_IN_USE otherwise) and with no parts (DEVICE_TASK_HAS_PARTS). Refuses without DEVICE_EDIT.</description>
         <in-parameters>
             <parameter name="deviceRuleId" required="true"/>
             <parameter name="deviceRuleSetId"/>
@@ -501,7 +502,7 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="apply" noun="Task" allow-remote="false">
-        <description>Applies a task to a device or group: the task must be one of the process (DEVICE_TASK_PROCESS) and of no other device (DEVICE_TASK_DEVICE); its configuration is applied (DeviceServices.apply#DeviceConfig) and the device's process and task are set. Refuses without DEVICE_OPERATE.</description>
+        <description>Applies a task to a device or group: the task must be one of the process (DEVICE_TASK_PROCESS), no part of another (DEVICE_TASK_PART), and of no device, this one or one of a group's, nested groups too (DEVICE_TASK_DEVICE); the configuration of the task and of each of its parts is applied to its own device (DeviceServices.apply#DeviceConfig), and the process and task are set on the record and on the task's device. Refuses without DEVICE_OPERATE.</description>
         <in-parameters>
             <parameter name="deviceId" required="true"/>
             <parameter name="deviceRuleSetId" required="true"/>
@@ -513,7 +514,7 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="export" noun="Process" allow-remote="false">
-        <description>Exports the recipe of the device's process to its {deviceId}_ExportProcess request, a group's through its controller (DeviceServices.export#DeviceConfig). Refuses without DEVICE_OPERATE; DEVICE_NO_PROCESS, DEVICE_NO_CONTROLLER, DEVICE_NO_REQUEST.</description>
+        <description>Exports the recipe of the task the device runs, with its parts, as one CODESYS recipe file (else the process's rules of the device) to its {deviceId}_ExportProcess request, a group's through its controller (DeviceServices.export#DeviceConfig). Refuses without DEVICE_OPERATE; DEVICE_NO_PROCESS, DEVICE_NO_CONTROLLER, DEVICE_NO_REQUEST.</description>
         <in-parameters>
             <parameter name="deviceId" required="true"/>
         </in-parameters>
@@ -560,7 +561,7 @@ along with this software (see the LICENSE.md file). If not, see
     </service>
 
     <service verb="get" noun="Choices" allow-remote="false" read-only="true">
-        <description>The options of a Devices drop-down, searched by term in the query ignoring case, with the selected value's label (DevicesApp.js choiceSources): devices, processes (of deviceId: its own and those of no device), tasks (of deviceRuleSetId that may run on deviceId), configs, trajectories, deviceTypes, devicePurposes, controlMethods, operatingModes, deviceStatuses, statusTypes, statusFlows, memberPurposes, memberStatuses, parameterTypes, parameterPurposes, parameterGroups, parameterClasses, parameterPermissions, configPurposes, configTypes, processPurposes, taskTypes, contentTypes. Refuses without DEVICE_VIEW and an unknown choice.</description>
+        <description>The options of a Devices drop-down, searched by term in the query ignoring case, with the selected value's label (DevicesApp.js choiceSources): devices, processes (of deviceId: its own and those of no device), tasks (of deviceRuleSetId, no part of another, that may run on deviceId: of no device, of it, or of a device of its groups), configs, trajectories, deviceTypes, devicePurposes, controlMethods, operatingModes, deviceStatuses, statusTypes, statusFlows, memberPurposes, memberStatuses, parameterTypes, parameterPurposes, parameterGroups, parameterClasses, parameterPermissions, configPurposes, configTypes, processPurposes, taskTypes, contentTypes. Refuses without DEVICE_VIEW and an unknown choice.</description>
         <in-parameters>
             <parameter name="choice" required="true"/>
             <parameter name="term"/>

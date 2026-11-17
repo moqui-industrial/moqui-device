@@ -12,7 +12,8 @@ You should have received a copy of the CC0 Public Domain Dedication
 along with this software (see the LICENSE.md file). If not, see
 <http://creativecommons.org/publicdomain/zero/1.0/>.
 -->
-<!-- ProcessDetail › Tasks (plan/design-devices.md §3.6): the process's tasks by priority (get#Process), each with its kind, the
+<!-- ProcessDetail › Tasks (plan/design-devices.md §3.6): the process's tasks by priority, each with its parts under it (a recipe
+    task's device configurations, DeviceRule.parentRuleId; get#Process), each with its kind, the
     device it is limited to, its configuration (linked) and dates; New task, Edit and Delete (confirmed, refused for a task a
     device runs) for an engineer (store#Task, delete#Task). -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
@@ -38,6 +39,14 @@ along with this software (see the LICENSE.md file). If not, see
                                     <field name="deviceRuleSetId"><default-field><hidden/></default-field></field>
                                     <field name="deviceRuleId"><default-field><hidden/></default-field></field>
                                     <field name="ruleName"><default-field title="Name" required="true"><text-line size="40"/></default-field></field>
+                                    <field name="parentRuleId">
+                                        <default-field title="Part of" tooltip="The task this one is a part of, as a recipe's device configuration">
+                                            <drop-down allow-empty="true">
+                                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                                        parameter-map="{choice:'tasks', selected:parentRuleId, choiceDeviceRuleSetId:deviceRuleSetId}"/>
+                                            </drop-down>
+                                        </default-field>
+                                    </field>
                                     <field name="ruleTypeEnumId">
                             <default-field title="Kind">
                                 <drop-down allow-empty="true">
@@ -70,7 +79,7 @@ along with this software (see the LICENSE.md file). If not, see
                                     <field-layout>
                                         <field-row><field-ref name="ruleName"/><field-ref name="ruleTypeEnumId"/></field-row>
                                         <field-row><field-ref name="deviceConfigId"/><field-ref name="deviceId"/></field-row>
-                                        <field-row><field-ref name="priority"/></field-row>
+                                        <field-row><field-ref name="priority"/><field-ref name="parentRuleId"/></field-row>
                                         <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
                                         <field-ref name="description"/>
                                         <field-ref name="submitButton"/>
@@ -80,7 +89,12 @@ along with this software (see the LICENSE.md file). If not, see
             </box-toolbar>
             <box-body-nopad>
                 <form-list name="TaskRows" list="taskList" skip-form="true" paginate="false">
-                    <field name="ruleName"><default-field title="Task"><display/></default-field></field>
+                    <!-- a task's parts (a recipe's device configurations) under it, indented -->
+                    <field name="ruleName">
+                        <default-field title="Task">
+                            <display text="${level ? '\u21b3 '.padStart(level * 2 + 2, '\u00a0') : ''}${ruleName}${partCount ? ' (' + partCount + ' parts)' : ''}"/>
+                        </default-field>
+                    </field>
                     <field name="deviceRuleId"><default-field title="Id"><display/></default-field></field>
                     <field name="priority" align="right"><default-field title="Priority"><display/></default-field></field>
                     <field name="typeText"><default-field title="Kind"><display/></default-field></field>
@@ -106,6 +120,14 @@ along with this software (see the LICENSE.md file). If not, see
                                     <field name="deviceRuleSetId"><default-field><hidden/></default-field></field>
                                     <field name="deviceRuleId"><default-field><hidden/></default-field></field>
                                     <field name="ruleName"><default-field title="Name" required="true"><text-line size="40"/></default-field></field>
+                                    <field name="parentRuleId">
+                                        <default-field title="Part of" tooltip="The task this one is a part of, as a recipe's device configuration">
+                                            <drop-down allow-empty="true">
+                                                <dynamic-options transition="choices" server-search="true" min-length="0"
+                                                        parameter-map="{choice:'tasks', selected:parentRuleId, choiceDeviceRuleSetId:deviceRuleSetId}"/>
+                                            </drop-down>
+                                        </default-field>
+                                    </field>
                                     <field name="ruleTypeEnumId">
                             <default-field title="Kind">
                                 <drop-down allow-empty="true">
@@ -138,7 +160,7 @@ along with this software (see the LICENSE.md file). If not, see
                                     <field-layout>
                                         <field-row><field-ref name="ruleName"/><field-ref name="ruleTypeEnumId"/></field-row>
                                         <field-row><field-ref name="deviceConfigId"/><field-ref name="deviceId"/></field-row>
-                                        <field-row><field-ref name="priority"/></field-row>
+                                        <field-row><field-ref name="priority"/><field-ref name="parentRuleId"/></field-row>
                                         <field-row><field-ref name="fromDate"/><field-ref name="thruDate"/></field-row>
                                         <field-ref name="description"/>
                                         <field-ref name="submitButton"/>

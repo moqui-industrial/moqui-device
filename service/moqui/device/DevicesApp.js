@@ -647,7 +647,20 @@ function getProcess(p) {
     const process = one("moqui.device.DeviceRuleSet", {deviceRuleSetId: p.deviceRuleSetId})
     if (!process) throw unavailable("Process", p.deviceRuleSetId)
     const [row] = processRows([process])
-    const tasks = rows(find("moqui.device.DeviceRule").condition("deviceRuleSetId", p.deviceRuleSetId).orderBy("priority,fromDate,deviceRuleId"))
+    const all = rows(find("moqui.device.DeviceRule").condition("deviceRuleSetId", p.deviceRuleSetId).orderBy("priority,fromDate,deviceRuleId"))
+    // each task followed by its parts, at any depth (a part whose parent is not in the process is a task of its own)
+    const tasks = []
+    const levels = {}
+    const place = (task, level) => {
+        tasks.push(task)
+        levels[task.deviceRuleId] = level
+        for (const part of all) if (part.parentRuleId === task.deviceRuleId && levels[part.deviceRuleId] == null) place(part, level + 1)
+    }
+    for (const task of all) {
+        if (levels[task.deviceRuleId] != null) continue
+        if (!task.parentRuleId || !all.some(rule => rule.deviceRuleId === task.parentRuleId)) place(task, 0)
+    }
+    const ruleNames = Object.fromEntries(all.map(rule => [rule.deviceRuleId, rule.ruleName || rule.deviceRuleId]))
     const types = enumTexts(tasks.map(task => task.ruleTypeEnumId))
     const configNames = names("moqui.device.DeviceConfig", "deviceConfigId", "configName", tasks.map(task => task.deviceConfigId))
     const deviceNames = deviceNameMap(tasks.map(task => task.deviceId))
@@ -666,6 +679,10 @@ function getProcess(p) {
             deviceRuleId: task.deviceRuleId,
             deviceRuleSetId: task.deviceRuleSetId,
             ruleName: task.ruleName || task.deviceRuleId,
+            level: levels[task.deviceRuleId] || 0,
+            parentRuleId: task.parentRuleId || null,
+            partOfText: task.parentRuleId ? ruleNames[task.parentRuleId] || task.parentRuleId : null,
+            partCount: all.filter(rule => rule.parentRuleId === task.deviceRuleId).length,
             ruleTypeEnumId: task.ruleTypeEnumId || null,
             typeText: types[task.ruleTypeEnumId] || null,
             deviceId: task.deviceId || null,
@@ -706,10 +723,18 @@ function storeTask(p) {
     require("edit")
     if (!one("moqui.device.DeviceRuleSet", {deviceRuleSetId: p.deviceRuleSetId})) throw unavailable("Process", p.deviceRuleSetId)
     const fields = {deviceRuleSetId: p.deviceRuleSetId}
-    for (const name of ["deviceId", "ruleTypeEnumId", "deviceConfigId", "ruleName", "description", "priority", "fromDate", "thruDate"]) {
+    for (const name of ["deviceId", "ruleTypeEnumId", "deviceConfigId", "ruleName", "description", "priority", "fromDate", "thruDate", "parentRuleId"]) {
         if (p[name] !== undefined) fields[name] = blank(p[name]) ? null : p[name]
     }
     if (fields.deviceId && !one("moqui.device.Device", {deviceId: fields.deviceId})) throw unavailable("Device", fields.deviceId)
+    // a part belongs to a task of the same process, and is not a part of itself
+    if (fields.parentRuleId) {
+        const parent = one("moqui.device.DeviceRule", {deviceRuleId: fields.parentRuleId})
+        if (!parent || parent.deviceRuleSetId !== p.deviceRuleSetId) throw unavailable("Task", fields.parentRuleId)
+        for (let at = parent; at; at = at.parentRuleId ? one("moqui.device.DeviceRule", {deviceRuleId: at.parentRuleId}) : null) {
+            if (at.deviceRuleId === p.deviceRuleId) throw new Error("DEVICE_TASK_PARENT: A task cannot be a part of itself")
+        }
+    }
     if (fields.deviceConfigId && !one("moqui.device.DeviceConfig", {deviceConfigId: fields.deviceConfigId}))
         throw unavailable("Configuration", fields.deviceConfigId)
     if (!blank(p.deviceRuleId)) {
@@ -730,6 +755,8 @@ function deleteTask(p) {
     if (!task || (p.deviceRuleSetId && task.deviceRuleSetId !== p.deviceRuleSetId)) throw unavailable("Task", p.deviceRuleId)
     if (find("moqui.device.Device").condition("deviceRuleId", p.deviceRuleId).count())
         throw new Error("DEVICE_TASK_IN_USE: A device runs this task; apply another task to it first")
+    if (find("moqui.device.DeviceRule").condition("parentRuleId", p.deviceRuleId).count())
+        throw new Error("DEVICE_TASK_HAS_PARTS: This task has parts; delete them first")
     ec.service.sync().name("delete#moqui.device.DeviceRule").parameters({deviceRuleId: p.deviceRuleId}).disableAuthz().call()
     return {}
 }
@@ -902,6 +929,24 @@ function operatedDevice(deviceId) {
     return controller
 }
 
+// a task and its parts (the rules whose parentRuleId is it, at any depth), the task first
+function taskTree(task) {
+    const tree = [task]
+    for (let index = 0; index < tree.length; index++) {
+        for (const part of rows(find("moqui.device.DeviceRule").condition("parentRuleId", tree[index].deviceRuleId).orderBy("priority,deviceRuleId"))) {
+            if (part.deviceRuleSetId === task.deviceRuleSetId && !tree.some(rule => rule.deviceRuleId === part.deviceRuleId)) tree.push(part)
+        }
+    }
+    return tree
+}
+
+// whether a task may run from a record: a task of no device, of the record, or of a device of a group's (nested groups too)
+function taskRunsOn(task, deviceId) {
+    return !task.deviceId || task.deviceId === deviceId || loggedDevices(deviceId).includes(task.deviceId)
+}
+
+// a task applied from a device or a group: each part's configuration to its own device (the record's when it names none), and
+// the process and task set on the record and on the device the task names
 function applyTask(p) {
     require("operate")
     const device = deviceRecord(p.deviceId)
@@ -909,15 +954,20 @@ function applyTask(p) {
     if (!task) throw unavailable("Task", p.deviceRuleId)
     if (task.deviceRuleSetId !== p.deviceRuleSetId)
         throw new Error("DEVICE_TASK_PROCESS: Task " + p.deviceRuleId + " is not a task of process " + p.deviceRuleSetId)
-    if (task.deviceId && task.deviceId !== p.deviceId)
+    if (task.parentRuleId) throw new Error("DEVICE_TASK_PART: Task " + p.deviceRuleId + " is a part of task " + task.parentRuleId + "; apply that one")
+    if (!taskRunsOn(task, p.deviceId))
         throw new Error("DEVICE_TASK_DEVICE: Task " + p.deviceRuleId + " runs on " + task.deviceId + ", not on " + p.deviceId)
-    if (task.deviceConfigId) {
+    for (const rule of taskTree(task)) {
+        if (!rule.deviceConfigId) continue
         ec.service.sync().name("moqui.device.DeviceServices.apply#DeviceConfig")
-            .parameters({deviceConfigId: task.deviceConfigId, deviceId: p.deviceId}).disableAuthz().call()
+            .parameters({deviceConfigId: rule.deviceConfigId, deviceId: rule.deviceId || p.deviceId}).disableAuthz().call()
         if (ec.message.hasError()) return {}
     }
-    ec.service.sync().name("update#moqui.device.Device")
-        .parameters({deviceId: device.deviceId, deviceRuleSetId: p.deviceRuleSetId, deviceRuleId: p.deviceRuleId}).disableAuthz().call()
+    const runners = [device.deviceId].concat(task.deviceId && task.deviceId !== device.deviceId ? [task.deviceId] : [])
+    for (const deviceId of runners) {
+        ec.service.sync().name("update#moqui.device.Device")
+            .parameters({deviceId, deviceRuleSetId: p.deviceRuleSetId, deviceRuleId: p.deviceRuleId}).disableAuthz().call()
+    }
     return {}
 }
 
@@ -927,8 +977,11 @@ function exportProcess(p) {
     if (!device.deviceRuleSetId) throw new Error("DEVICE_NO_PROCESS: " + p.deviceId + " runs no process; apply a task first")
     const target = operatedDevice(p.deviceId)
     const requestName = requestOf(target, REQUEST_SUFFIXES.exportProcess, "export a process recipe")
+    // the recipe of the task the record runs (with its parts), else the process's rules of the device
+    const task = device.deviceRuleId ? one("moqui.device.DeviceRule", {deviceRuleId: device.deviceRuleId}) : null
+    const scope = task && task.deviceRuleSetId === device.deviceRuleSetId ? {deviceRuleId: task.deviceRuleId} : {deviceId: target}
     const out = ec.service.sync().name("moqui.device.DeviceServices.export#DeviceConfig")
-        .parameters({deviceRuleSetId: device.deviceRuleSetId, deviceId: target, requestName}).disableAuthz().call() || {}
+        .parameters(Object.assign({deviceRuleSetId: device.deviceRuleSetId, requestName}, scope)).disableAuthz().call() || {}
     return {status: out.status || null, transferredFiles: out.transferredFiles || []}
 }
 
@@ -1003,8 +1056,9 @@ const choiceSources = {
         if (text(p.deviceRuleSetId)) {
             const query = find("moqui.device.DeviceRule").condition("deviceRuleSetId", p.deviceRuleSetId).conditionDate("fromDate", "thruDate", null)
             if (term) query.condition(textCondition(term, ["deviceRuleId", "ruleName"]))
+            query.condition("parentRuleId", null)
             for (const row of rows(query.orderBy("priority,^ruleName").limit(CHOICE_LIMIT))) {
-                if (row.deviceId && p.deviceId && row.deviceId !== p.deviceId) continue
+                if (p.deviceId && !taskRunsOn(row, p.deviceId)) continue
                 options.push({value: row.deviceRuleId, label: (row.priority != null ? row.priority + " · " : "") + (row.ruleName || row.deviceRuleId)})
             }
         }

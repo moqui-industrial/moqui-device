@@ -215,7 +215,10 @@ along with this software (see the LICENSE.md file). If not, see
     <service verb="get" noun="DeviceConfigExportFiles">
         <description>
             Renders the recipe of a DeviceRuleSet as text files, one per DeviceRule priority, named
-            ruleSetName_pNN.txt. Each line is name:=value, sorted by name.
+            ruleSetName_pNN.txt; with deviceRuleId, the recipe of that task and of its parts (the rules whose
+            parentRuleId is it, at any depth) as one CODESYS recipe file named configName.ruleSetName.txtrecipe, the
+            configName of the task's DeviceConfig (CivilCooling.HvacDeviceConfig.txtrecipe). Each line is name:=value,
+            sorted by name.
 
             Parameter lines: the Parameter records of the DeviceConfig of each DeviceRule. The name is the
             requestItemName of a DeviceRequestItem of the Parameter when there is one; otherwise it depends on

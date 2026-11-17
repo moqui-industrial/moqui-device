@@ -255,7 +255,9 @@ function trajectoryLines(functionId, g) {
     return true
 }
 
-// get#DeviceConfigExportFiles: the recipe of a DeviceRuleSet as one text file per DeviceRule priority.
+// get#DeviceConfigExportFiles: the recipe of a DeviceRuleSet as one text file per DeviceRule priority; with deviceRuleId,
+// the recipe of that task and of its parts (the rules whose parentRuleId is it, at any depth) as one CODESYS recipe file,
+// <its configuration's name>.<the rule set's name>.txtrecipe (CivilCooling.HvacDeviceConfig.txtrecipe).
 function configExportFiles(p) {
     const ruleSet = one("moqui.device.DeviceRuleSet", "deviceRuleSetId", p.deviceRuleSetId)
     if (!ruleSet) return refuse(`DeviceRuleSet ${p.deviceRuleSetId} not found.`)
@@ -269,16 +271,33 @@ function configExportFiles(p) {
         return groups.get(key)
     }
 
-    let ruleFind = ec.entity.find("moqui.device.DeviceRule").condition("deviceRuleSetId", p.deviceRuleSetId)
-    if (p.deviceId) ruleFind = ruleFind.condition("deviceId", p.deviceId)
-    if (p.deviceRuleId) ruleFind = ruleFind.condition("deviceRuleId", p.deviceRuleId)
-    for (const rule of list(ruleFind)) {
+    let rules
+    let recipeFile = null
+    if (p.deviceRuleId) {
+        const task = one("moqui.device.DeviceRule", "deviceRuleId", p.deviceRuleId)
+        if (!task || task.deviceRuleSetId !== p.deviceRuleSetId)
+            return refuse(`DeviceRule ${p.deviceRuleId} is not a rule of DeviceRuleSet ${p.deviceRuleSetId}.`)
+        rules = [task]
+        for (let index = 0; index < rules.length; index++) {
+            for (const part of list(ec.entity.find("moqui.device.DeviceRule").condition("parentRuleId", rules[index].deviceRuleId))) {
+                if (part.deviceRuleSetId === p.deviceRuleSetId && !rules.some(rule => rule.deviceRuleId === part.deviceRuleId)) rules.push(part)
+            }
+        }
+        const taskConfig = task.deviceConfigId ? one("moqui.device.DeviceConfig", "deviceConfigId", task.deviceConfigId) : null
+        recipeFile = `${nonEmpty(taskConfig?.configName) || task.ruleName || task.deviceRuleId}.${ruleSetName}.txtrecipe`
+    } else {
+        let ruleFind = ec.entity.find("moqui.device.DeviceRule").condition("deviceRuleSetId", p.deviceRuleSetId)
+        if (p.deviceId) ruleFind = ruleFind.condition("deviceId", p.deviceId)
+        rules = list(ruleFind)
+    }
+    for (const rule of rules) {
         if (!rule.deviceConfigId) continue
         const config = one("moqui.device.DeviceConfig", "deviceConfigId", rule.deviceConfigId)
         if (!config) continue
         const physical = rule.deviceId ? one("moqui.device.PhysicalDevice", "deviceId", rule.deviceId) : null
         const deviceName = nonEmpty(physical?.deviceName) || rule.deviceId
-        const g = group(rule.priority)
+        // a task's recipe is one file, whatever the priorities of its parts
+        const g = group(recipeFile ? 0 : rule.priority)
 
         for (const parameter of list(ec.entity.find("moqui.math.Parameter").condition("deviceConfigId", config.deviceConfigId))) {
             const key = JSON.stringify([parameter.parameterId, deviceName, config.deviceTypeEnumId])
@@ -313,7 +332,7 @@ function configExportFiles(p) {
         if (!g.lines.length) continue
         g.lines.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
         files.push({
-            name: `${ruleSetName}_p${String(priority).padStart(2, "0")}.txt`,
+            name: recipeFile || `${ruleSetName}_p${String(priority).padStart(2, "0")}.txt`,
             content: g.lines.map(([name, value]) => `${name}:=${value}`).join("\n"),
             priority,
             rowCount: g.lines.length

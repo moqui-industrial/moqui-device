@@ -195,3 +195,37 @@ feature("the HVAC demo series is written once, and a group shows the logs of the
         out.devices.includes("HvacApplication") && out.devices.length > 2
     }
 })
+
+feature("an HVAC recipe is one task with its device parts: offered on the plant, applied whole, exported as one CODESYS recipe", {
+    when() {
+        const offered = invoke(app + "get#Choices", {choice: "tasks", deviceId: "HVAC_DEMO", deviceRuleSetId: "HvacCivilRules"}).options
+        const part = refusal(app + "apply#Task", {deviceId: "HVAC_DEMO", deviceRuleSetId: "HvacCivilRules", deviceRuleId: "HvacCcColdPumpRule"})
+        const device = id => ec.entity.find("moqui.device.Device").condition("deviceId", id).useCache(false).one()
+        const before = {group: device("HVAC_DEMO"), plc: device("HVAC_DEMO_PLC")}
+        const applied = refusal(app + "apply#Task", {deviceId: "HVAC_DEMO", deviceRuleSetId: "HvacCivilRules", deviceRuleId: "HvacCcProcessRule"})
+        const after = {group: device("HVAC_DEMO").deviceRuleId, plc: device("HVAC_DEMO_PLC").deviceRuleId}
+        for (const [deviceId, row] of [["HVAC_DEMO", before.group], ["HVAC_DEMO_PLC", before.plc]]) {
+            invoke("update#moqui.device.Device", {deviceId, deviceRuleSetId: row.deviceRuleSetId, deviceRuleId: row.deviceRuleId})
+        }
+        const recipe = invoke("moqui.device.DeviceServices.get#DeviceConfigExportFiles", {deviceRuleSetId: "HvacCivilRules", deviceRuleId: "HvacCcProcessRule"})
+        const content = recipe.files.length ? recipe.files[0].content : ""
+        return {
+            offered: offered.map(option => option.value).sort().join(","),
+            part,
+            applied,
+            after,
+            names: recipe.files.map(file => file.name).join(","),
+            hasPump: content.includes("dev.coldGlycolPump.actuatorId:="),
+            hasProcess: content.includes("dev.tempSetpoint:=22")
+        }
+    },
+    then(out) {
+        out.offered == "HvacCcProcessRule,HvacCdProcessRule,HvacChProcessRule"
+        /DEVICE_TASK_PART/.test(out.part)
+        out.applied == ""
+        out.after.group == "HvacCcProcessRule" && out.after.plc == "HvacCcProcessRule"
+        out.names == "CivilCooling.HvacDeviceConfig.txtrecipe"
+        out.hasPump == true
+        out.hasProcess == true
+    }
+})

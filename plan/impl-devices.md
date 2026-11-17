@@ -64,7 +64,17 @@ mr-boss's and mr-pass's, as before this phase; moqui-math over its budget under 
   (`moqui.pageRefreshDue`). A service's lists reach a transition's script as host lists: `Array.from` makes them JSON
   arrays (the table counted no rows before). The tab is first, and by default draws the first numeric logged parameter
   (`rhControlEnabled`, a text, came first on the HVAC PLC). Checked in a browser: the time read changed in 10 s and a
-  marker set on the page survived it (no page reload); the log pages 1–20 and 21–35 of 35.
+  marker set on the page survived it (no page reload); the log pages 1–20 and 21–35 of 35.- F13 (review of the HVAC demo): the three CODESYS recipes were three processes of seven tasks each, so the plant's
+  Apply task offered no task (each named a device) and a process held one recipe. Now one process, `HvacCivilRules`
+  (`HvacDeviceConfig`, the CODESYS recipe definition), holds the three recipes as tasks on the PLC, each with the six
+  device configurations as its parts (`DeviceRule.parentRuleId`; a `DeviceConfig` names no device, which the variable names
+  and the apply need). A task is offered and applied from the record, a group's device or a device of its nested groups;
+  applying it applies each part's configuration to its device; exporting it writes one file,
+  `CivilCooling.HvacDeviceConfig.txtrecipe`, as moqui-plc's mantle-hvac (compared line by line: the same assignments, with
+  numbers written without `.0`, the feedback values left out as `export#DeviceConfig` leaves them out, and
+  `processRemainingDuration`, which the CODESYS file lacks). The Tasks tab lists each task's parts under it, and a task's
+  dialogs take its "Part of".
+
 ### Left for later
 
 - A server-static sweep: mr-boss's `ServerStaticLib` does the check, and this component does not depend on mr-boss.

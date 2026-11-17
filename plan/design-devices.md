@@ -108,7 +108,10 @@ and Parameters (the configuration's own parameters: `deviceConfigId` with no `de
 The list: name, purpose, parent, sequence, dates; New process (engineer, a dialog). The detail: header (id, name,
 purpose caption), Edit in More; tabs Overview (fields, the devices running it) and Tasks (the `DeviceRule`s by
 priority: device, type, configuration with its link, name, priority, dates; New task, Edit and Delete in the row for
-the engineer, Delete confirmed with the task's name).
+the engineer, Delete confirmed with the task's name). A task may have parts (`parentRuleId`): a CODESYS recipe is a task on the PLC
+whose parts are the configurations of the plant's devices; the parts show under it, are applied with it each to its own
+device, and are exported with it as one `<recipe>.<process>.txtrecipe` file. Apply task offers the tasks that are no part,
+of no device, of the record or of a device of its groups.
 
 ### 3.7 Choices
 
