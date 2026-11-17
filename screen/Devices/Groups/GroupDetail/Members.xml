@@ -16,7 +16,7 @@ along with this software (see the LICENSE.md file). If not, see
     device's or, for a nested group, a group's), with its purpose, sequence, membership status (a chip), status flow and description, found by purpose and status (the
     Java EditDeviceGroupMembers). -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
-        default-menu-title="Members" default-menu-index="2">
+        default-menu-title="Members" default-menu-index="3">
     <parameter name="deviceId" required="true"/>
     <parameter name="purposeEnumId"/>
     <parameter name="statusId"/>

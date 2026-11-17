@@ -13,7 +13,7 @@ along with this software (see the LICENSE.md file). If not, see
 <http://creativecommons.org/publicdomain/zero/1.0/>.
 -->
 <!-- Devices › Groups › GroupDetail (plan/design-devices.md §3.4; style-guide §3.3 Detail): one group, with the device detail's
-    record header (DevicesParts.xml DeviceHeader), whose requests run through the group's controller. The tabs: the device's
+    record header (DevicesParts.xml DeviceHeader), whose requests run through the group's controller. The tabs (Observability the one a link opens): the device's
     Overview, Parameters (the group's and its members') and Content, and Members (GroupDetail/Members.xml). -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Group" default-menu-include="false">
@@ -22,15 +22,15 @@ along with this software (see the LICENSE.md file). If not, see
     <transition-include name="applyTask" location="component://moqui-device/template/DevicesParts.xml"/>
     <transition-include name="exportProcess" location="component://moqui-device/template/DevicesParts.xml"/>
     <transition-include name="syncParameters" location="component://moqui-device/template/DevicesParts.xml"/>
-    <subscreens default-item="Overview">
+    <subscreens default-item="Observability">
         <subscreens-item name="Overview" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Overview.xml"
-                menu-title="Overview" menu-index="1"/>
+                menu-title="Overview" menu-index="2"/>
         <subscreens-item name="Parameters" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Parameters.xml"
-                menu-title="Parameters" menu-index="3"/>
+                menu-title="Parameters" menu-index="4"/>
         <subscreens-item name="Content" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Content.xml"
-                menu-title="Content" menu-index="4"/>
+                menu-title="Content" menu-index="5"/>
         <subscreens-item name="Observability" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Observability.xml"
-                menu-title="Observability" menu-index="5"/>
+                menu-title="Observability" menu-index="1"/>
     </subscreens>
     <actions>
         <service-call name="moqui.device.DeviceAppServices.get#Device" out-map="deviceAnswer" transaction="force-new"

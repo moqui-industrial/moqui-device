@@ -1,0 +1,164 @@
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<!-- DeviceDetail › Observability in the browser (Observability.xml serves it in the qvue render mode): the picker of a logged
+    parameter, the range and the auto refresh; the parameter over time in a report panel (m-report-panel, as System › Monitor ›
+    Metrics draws it), its values listed when they are texts; and the device log, paged. The data comes from the screen's
+    observabilityData transition; auto refresh reads it again every few seconds while the page is in view and no dialog or input
+    is active (moqui.pageRefreshDue), and redraws the chart and the log only. The choices are kept in the address, so a link or a
+    reload keeps them. -->
+<template><div>
+    <div class="row items-center q-col-gutter-sm q-mb-sm">
+        <div class="col-12 col-sm-5 col-md-4">
+            <q-select v-model="parameterId" :options="parameterOptions" option-value="value" option-label="text" emit-value map-options
+                    outlined dense label="Parameter" :disable="!parameterOptions.length" @update:model-value="choose"></q-select>
+        </div>
+        <div class="col-6 col-sm-3 col-md-2">
+            <q-select v-model="range" :options="rangeOptions" emit-value map-options outlined dense label="Range"
+                    @update:model-value="choose"></q-select>
+        </div>
+        <div class="col-6 col-sm-3 col-md-2">
+            <q-select v-model="refresh" :options="refreshOptions" emit-value map-options outlined dense label="Auto refresh"
+                    @update:model-value="setRefresh"></q-select>
+        </div>
+        <div class="col-auto row items-center q-gutter-x-sm">
+            <q-btn dense flat no-caps icon="sym_o_refresh" label="Refresh" :loading="loading" @click="load"></q-btn>
+            <span class="text-caption" :class="mutedClass" v-if="updatedText">Updated {{updatedText}}</span>
+            <q-badge v-if="refreshSeconds" class="m-tonal text-positive" :label="'Live · every ' + refreshLabel"></q-badge>
+        </div>
+    </div>
+
+    <p v-if="loaded && !parameterOptions.length" :class="mutedClass">No parameter of this device has a log yet. Values are logged by the
+        requests whose purpose is logging.</p>
+    <p v-else-if="loaded && parameterId && !pointCount" :class="mutedClass">No values of this parameter in the range: choose a longer one.</p>
+
+    <m-report-panel v-if="panel && pointCount" :frame="frame" :panel="panel"></m-report-panel>
+
+    <m-container-box v-if="!panel && pointCount" title="Values">
+        <q-table flat dense :rows="valueRows" :columns="valueColumns" row-key="at" :pagination="{rowsPerPage: 20}"></q-table>
+    </m-container-box>
+
+    <m-container-box title="Device log">
+        <q-table flat dense :rows="deviceLogList" :columns="logColumns" row-key="deviceLogId" v-model:pagination="logPagination"
+                :loading="loading" @request="logPage" no-data-label="No device log in the range.">
+            <template v-slot:body-cell-payload="props">
+                <q-td :props="props" class="text-mono" style="white-space: normal; word-break: break-word;">{{props.value}}</q-td>
+            </template>
+        </q-table>
+    </m-container-box>
+</div></template>
+
+<script>
+module.exports = {
+    inject: { mScreen: { default: null } },
+    data() {
+        return {
+            parameterId: null, range: '7d', refresh: '0', pageIndex: 0,
+            parameterOptions: [], frame: { fields: [] }, panel: null, pointCount: 0,
+            deviceLogList: [], deviceLogListCount: 0, deviceLogListPageSize: 20,
+            updatedText: '', loading: false, loaded: false, timer: null,
+            // the log table's page, as the Quasar table takes it in server mode
+            logPagination: { page: 1, rowsPerPage: 20, rowsNumber: 0 },
+            rangeOptions: [{ label: 'Last hour', value: '1h' }, { label: 'Last 24 hours', value: '24h' }, { label: 'Last 7 days', value: '7d' },
+                { label: 'Last 30 days', value: '30d' }, { label: 'Last year', value: '365d' }, { label: 'All', value: 'all' }],
+            refreshOptions: [{ label: 'Off', value: '0' }, { label: 'Every 10 seconds', value: '10' }, { label: 'Every 30 seconds', value: '30' },
+                { label: 'Every minute', value: '60' }, { label: 'Every 5 minutes', value: '300' }],
+            logColumns: [
+                { name: 'observedText', label: 'Observed', field: 'observedText', align: 'left' },
+                { name: 'deviceName', label: 'Device', field: 'deviceName', align: 'left' },
+                { name: 'sequenceNum', label: 'Sequence', field: 'sequenceNum', align: 'right' },
+                { name: 'payload', label: 'Event', field: 'payload', align: 'left' }],
+            valueColumns: [
+                { name: 'observedText', label: 'Observed', field: 'observedText', align: 'left' },
+                { name: 'value', label: 'Value', field: 'value', align: 'left' }]
+        };
+    },
+    computed: {
+        // the screen's own path and query, wherever it is loaded (a tab of the device or the group detail)
+        screenPath() { return this.mScreen ? this.mScreen.path : this.$root.basePath + '/' + this.$root.currentPathList.join('/'); },
+        screenParameters() { return (this.mScreen && this.mScreen.parameters) || this.$root.currentParameters || {}; },
+        deviceId() { return this.screenParameters.deviceId; },
+        refreshSeconds() { const seconds = Number(this.refresh); return seconds > 0 ? Math.max(10, seconds) : 0; },
+        refreshLabel() { const option = this.refreshOptions.find((item) => item.value === this.refresh); return option ? option.label.replace('Every ', '') : ''; },
+        mutedClass() { return this.$q.dark.isActive ? 'text-grey-5' : 'text-grey-7'; },
+        // a text parameter's values, newest first
+        valueRows() {
+            const fields = this.list(this.frame.fields), times = this.list(fields[0] && fields[0].values), values = this.list(fields[1] && fields[1].values);
+            return times.map((at, index) => ({ at, observedText: new Date(at).toLocaleString(), value: values[index] })).reverse();
+        }
+    },
+    methods: {
+        // a list of the answer: an array, or an object of index keys
+        list(value) { return Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : []; },
+        load() {
+            if (!this.deviceId) return;
+            this.loading = true;
+            const params = { deviceId: this.deviceId, range: this.range, pageIndex: this.pageIndex, pageSize: this.deviceLogListPageSize };
+            if (this.parameterId) params.parameterId = this.parameterId;
+            moqui.request(this.screenPath + '/observabilityData', { params }).then((result) => {
+                const json = result.json || {};
+                this.parameterOptions = this.list(json.parameterOptions);
+                this.parameterId = json.parameterId || null;
+                this.range = json.range || this.range;
+                this.frame = json.frame || { fields: [] };
+                this.panel = json.panel || null;
+                this.pointCount = json.pointCount || 0;
+                this.deviceLogList = this.list(json.deviceLogList);
+                this.deviceLogListCount = Number(json.deviceLogListCount) || 0;
+                this.deviceLogListPageSize = Number(json.deviceLogListPageSize) || 20;
+                this.updatedText = json.updatedText || '';
+                this.logPagination = { page: this.pageIndex + 1, rowsPerPage: this.deviceLogListPageSize, rowsNumber: this.deviceLogListCount };
+                this.loaded = true;
+            }, (err) => moqui.handleAjaxError(err)).finally(() => { this.loading = false; });
+        },
+        // a new parameter or range: the first page of the log, and the choice kept in the address
+        choose() {
+            this.pageIndex = 0;
+            this.keepInAddress();
+            this.load();
+        },
+        logPage(request) {
+            this.pageIndex = Math.max(0, (request.pagination.page || 1) - 1);
+            if (request.pagination.rowsPerPage) this.deviceLogListPageSize = request.pagination.rowsPerPage;
+            this.load();
+        },
+        setRefresh() {
+            if (this.timer) clearInterval(this.timer);
+            this.timer = null;
+            this.keepInAddress();
+            if (!this.refreshSeconds) return;
+            this.timer = setInterval(() => {
+                if (!this.loading && moqui.pageRefreshDue(document)) this.load();
+            }, this.refreshSeconds * 1000);
+        },
+        keepInAddress() {
+            try {
+                const url = new URL(window.location.href);
+                if (this.parameterId) url.searchParams.set('parameterId', this.parameterId);
+                url.searchParams.set('range', this.range);
+                if (this.refreshSeconds) url.searchParams.set('refresh', String(this.refreshSeconds)); else url.searchParams.delete('refresh');
+                window.history.replaceState(window.history.state, '', url.href);
+            } catch (err) { /* the address stays as it is */ }
+        }
+    },
+    mounted() {
+        const params = this.screenParameters;
+        if (params.parameterId) this.parameterId = params.parameterId;
+        if (params.range) this.range = params.range;
+        if (Number(params.refresh) > 0) this.refresh = String(Math.max(10, Number(params.refresh)));
+        this.load();
+        this.setRefresh();
+    },
+    beforeUnmount() { if (this.timer) clearInterval(this.timer); }
+};
+</script>

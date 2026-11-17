@@ -122,7 +122,10 @@ and the enumerations `deviceTypes`, `devicePurposes`, `controlMethods`, `process
 In the style of System › Monitor › Metrics: a picker of a logged parameter (the device's, or a group's and its
 members', through nested groups) and a range (last hour, day, week, month, year, all), the parameter's `ParameterLog` drawn over time by a
 `report-panel` (a time series of numbers; texts listed in a table), and the `DeviceLog` rows of the same devices in the
-range, newest first, paged. `get#Observability` builds the frame and the page.
+range, newest first, paged. `get#Observability` builds the frame and the page. In the browser the tab is a `.qvue` (Practices-App-Dev §6: XML
+widgets cannot redraw a part of a page in place): it reads its data from the screen's `observabilityData` transition and,
+with auto refresh on (off, 10 s, 30 s, 1 min, 5 min), reads it again while the page is in view, redrawing the chart and the
+log only. The terminal and print render the XML widgets. Observability is the first tab of a device and a group, and the one a link to the record opens.
 
 ## 4. Services
 

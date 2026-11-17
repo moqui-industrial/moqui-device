@@ -15,17 +15,34 @@ along with this software (see the LICENSE.md file). If not, see
 <!-- DeviceDetail › Observability, also GroupDetail's (plan/design-devices.md §3.3; in place of the Java DeviceObservability and its
     Grafana panel, in the style of System › Monitor › Metrics): a logged parameter of the device (a group's and its members') chosen
     with the range, drawn over time as a report panel (texts listed), and the DeviceLog rows of the same devices in the range, newest
-    first (get#Observability). -->
+    first (get#Observability). In the browser the tab is Observability.qvue: it reads its data from observabilityData and, with auto
+    refresh on, reads it again every few seconds while the page is in view, redrawing the chart and the log only, not the page. The
+    terminal and html render the widgets below (the report panel has its own terminal twin; F5 reads them again). -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
-        default-menu-title="Observability" default-menu-index="5">
+        default-menu-title="Observability" default-menu-index="1" render-modes="qvue,tui,html">
     <parameter name="deviceId" required="true"/>
     <parameter name="parameterId"/>
     <parameter name="range"/>
+    <parameter name="refresh"/>
     <parameter name="pageIndex"/>
+    <parameter name="pageSize"/>
+    <!-- the browser tab's data: the series and a page of the log, as get#Observability answers, with the time it was read -->
+    <transition name="observabilityData" method="get" read-only="true">
+        <actions>
+            <service-call name="moqui.device.DeviceAppServices.get#Observability" out-map="observed"
+                    in-map="{deviceId:deviceId, parameterId:(parameterId || null), range:(range || null), pageIndex:(pageIndex || 0),
+                        pageSize:(pageSize || null)}"/>
+            <!-- the service's lists reach the script as host lists: Array.from makes them JSON arrays -->
+            <script>ec.web.sendJsonResponse(Object.assign({}, observed, {deviceLogList: Array.from(observed.deviceLogList || []),
+                parameterOptions: Array.from(observed.parameterOptions || []), updatedText: ec.l10n.format(ec.user.nowTimestamp, 'HH:mm:ss')}))</script>
+        </actions>
+        <default-response type="none"/>
+    </transition>
     <actions>
         <service-call name="moqui.device.DeviceAppServices.get#Observability" out-map="observed" transaction="force-new"
                 ignore-error="true" in-map="{deviceId:deviceId, parameterId:parameterId, range:range, pageIndex:pageIndex}"/>
         <script>ec.message.clearErrors()</script>
+        <set field="updatedText" from="ec.l10n.format(ec.user.nowTimestamp, 'HH:mm:ss')"/>
         <set field="range" from="observed?.range || '7d'"/>
         <set field="parameterId" from="observed?.parameterId || null"/>
         <set field="parameterOptions" from="observed?.parameterOptions || []"/>
@@ -43,6 +60,9 @@ along with this software (see the LICENSE.md file). If not, see
                 observedText: ec.l10n.format(at, 'yyyy-MM-dd HH:mm:ss'), value: seriesFrame.fields[1]?.values[index]}))"/>
     </actions>
     <widgets>
+        <render-mode>
+            <text type="qvue" location="component://moqui-device/screen/Devices/Devices/DeviceDetail/Observability.qvue" template="false"/>
+        </render-mode>
         <form-single name="SeriesPicker" transition=".">
             <field name="deviceId"><default-field><hidden/></default-field></field>
             <field name="parameterId">
@@ -69,6 +89,7 @@ along with this software (see the LICENSE.md file). If not, see
                 <field-row-big><field-ref name="parameterId"/><field-ref name="range"/><field-ref name="submitButton"/></field-row-big>
             </field-layout>
         </form-single>
+        <label text="Updated ${updatedText}" type="p" style="m-muted"/>
         <label text="No parameter of this device has a log yet. Values are logged by the requests whose purpose is logging."
                 type="p" style="m-muted" condition="!parameterOptions.length"/>
         <label text="No values of this parameter in the range: choose a longer one." type="p" style="m-muted"

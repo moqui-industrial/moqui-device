@@ -58,7 +58,13 @@ mr-boss's and mr-pass's, as before this phase; moqui-math over its budget under 
   `data/HVACDemoSeriesData.xml`: 7 days of readings every 15 minutes, dated back from the load (room and duct temperature
   and humidity, fan speed and air flow by the occupancy schedule, humidity control as a text log) and the plant's events
   on working days; written once, `refresh` writes it again from now. A group's logs come through its nested groups.
-
+- F12: Observability's auto refresh. The framework's (System › Home's `m-page-refresh`, the dashboards' `m-dashboard`)
+  reload the whole page; the tab is now `Observability.qvue`, which reads `observabilityData` (get#Observability as JSON)
+  and redraws only the report panel and the log table, while the page is in view and no dialog or input is active
+  (`moqui.pageRefreshDue`). A service's lists reach a transition's script as host lists: `Array.from` makes them JSON
+  arrays (the table counted no rows before). The tab is first, and by default draws the first numeric logged parameter
+  (`rhControlEnabled`, a text, came first on the HVAC PLC). Checked in a browser: the time read changed in 10 s and a
+  marker set on the page survived it (no page reload); the log pages 1–20 and 21–35 of 35.
 ### Left for later
 
 - A server-static sweep: mr-boss's `ServerStaticLib` does the check, and this component does not depend on mr-boss.

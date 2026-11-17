@@ -16,7 +16,7 @@ along with this software (see the LICENSE.md file). If not, see
     time) or a group's controller, the current process and task with their links, the parent device and, for a device, the groups
     it is a member of. Read again here (get#Device), since a tab rendered on its own runs no actions of its parent. -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
-        default-menu-title="Overview" default-menu-index="1">
+        default-menu-title="Overview" default-menu-index="2">
     <parameter name="deviceId" required="true"/>
     <actions>
         <service-call name="moqui.device.DeviceAppServices.get#Device" out-map="overview" transaction="force-new"

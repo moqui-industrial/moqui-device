@@ -20,7 +20,7 @@ along with this software (see the LICENSE.md file). If not, see
     sequence, the value (a number or a text by the parameter's type) and the enumeration value in the row (update#ParameterValue,
     a number within the definition's range). -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
-        default-menu-title="Parameters" default-menu-index="3">
+        default-menu-title="Parameters" default-menu-index="4">
     <parameter name="deviceId"/>
     <parameter name="deviceConfigId"/>
     <parameter name="text"/>

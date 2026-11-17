@@ -14,7 +14,7 @@ along with this software (see the LICENSE.md file). If not, see
 -->
 <!-- Devices › DeviceDetail (plan/design-devices.md §3.3; style-guide §3.3 Detail): one device with the record header of DevicesParts.xml DeviceHeader: Apply task (primary, an operator's) and More with
     the export of the process recipe and the synchronization of parameters when their requests exist (a group's through its
-    controller). The tabs: Overview, Parameters, Content. Groups' GroupDetail takes this screen's actions and tabs. A record that does not exist, or a user who may not
+    controller). The tabs: Observability (the one a link opens), Overview, Parameters, Content. Groups' GroupDetail takes this screen's actions and tabs. A record that does not exist, or a user who may not
     read devices, is told "Not available", with the way back to the list. -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Device" default-menu-include="false">
@@ -23,7 +23,7 @@ along with this software (see the LICENSE.md file). If not, see
     <transition-include name="applyTask" location="component://moqui-device/template/DevicesParts.xml"/>
     <transition-include name="exportProcess" location="component://moqui-device/template/DevicesParts.xml"/>
     <transition-include name="syncParameters" location="component://moqui-device/template/DevicesParts.xml"/>
-    <subscreens default-item="Overview"/>
+    <subscreens default-item="Observability"/>
     <actions>
         <service-call name="moqui.device.DeviceAppServices.get#Device" out-map="deviceAnswer" transaction="force-new"
                 ignore-error="true" in-map="{deviceId:deviceId}"/>

@@ -16,7 +16,7 @@ along with this software (see the LICENSE.md file). If not, see
     first (get#ContentList): Download for a reader, Transfer to the device for an operator when its _TransferContent request exists,
     Add, Edit and Delete for an engineer (store#Content, delete#Content). -->
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
-        default-menu-title="Content" default-menu-index="4">
+        default-menu-title="Content" default-menu-index="5">
     <parameter name="deviceId" required="true"/>
     <transition-include name="choices" location="component://moqui-device/template/DevicesParts.xml"/>
     <transition-include name="storeContent" location="component://moqui-device/template/DevicesParts.xml"/>

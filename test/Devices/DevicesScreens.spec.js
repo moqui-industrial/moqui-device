@@ -24,7 +24,6 @@ feature("each screen renders with what it shows", {
             ["Devices/DeviceDetail/Overview", {deviceId: "VIRTUAL_PLC_01"}, "Apply task"],
             ["Devices/DeviceDetail/Parameters", {deviceId: "VIRTUAL_PLC_01", lastStandalone: "true"}, "TestPlcCycleTime"],
             ["Devices/DeviceDetail/Content", {deviceId: "VIRTUAL_PLC_01", lastStandalone: "true"}, "Add content"],
-            ["Devices/DeviceDetail/Observability", {deviceId: "VIRTUAL_PLC_01", range: "all", lastStandalone: "true"}, "Device log"],
             ["Groups/Find", {}, "Device groups"],
             ["Groups/GroupDetail/Members", {deviceId: "DG_EDGE_01", lastStandalone: "true"}, "VIRTUAL_PLC_01"],
             ["Configs/Find", {}, "TestPlcFactoryConfig1"],
@@ -38,6 +37,14 @@ feature("each screen renders with what it shows", {
             if (rendered.status !== 200 || rendered.errors.length) problems.push(path + ": " + rendered.status + " " + rendered.errors.join(" | "))
             else if (!rendered.output.includes(expected)) problems.push(path + ": no " + expected)
         }
+        // Observability: the browser's .qvue (its file, which reads observabilityData) and the terminal's widgets
+        const observabilityParameters = {deviceId: "VIRTUAL_PLC_01", range: "all", lastStandalone: "true"}
+        const qvue = page("Devices/DeviceDetail/Observability", observabilityParameters, "qvue")
+        if (qvue.status !== 200 || !qvue.output.includes("observabilityData") || !qvue.output.includes("m-report-panel"))
+            problems.push("Observability qvue: " + qvue.status + " " + qvue.errors.join(" | "))
+        const observedTui = page("Devices/DeviceDetail/Observability", observabilityParameters, "tui")
+        if (observedTui.status !== 200 || observedTui.errors.length || !observedTui.output.includes("Device log"))
+            problems.push("Observability tui: " + observedTui.status + " " + observedTui.errors.join(" | "))
         // the record header's status chip has its own tui text
         const tui = page("Devices/DeviceDetail", {deviceId: "VIRTUAL_PLC_01"}, "tui")
         if (tui.status !== 200 || tui.errors.length || !tui.output.includes("Virtual PLC 01")) problems.push("DeviceDetail tui: " + tui.errors.join(" | "))

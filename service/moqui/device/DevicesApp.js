@@ -771,8 +771,11 @@ function observability(p) {
         value: parameter.parameterId,
         text: (deviceIds.length > 1 ? (names[parameter.deviceId] || parameter.deviceId) + " · " : "") + (parameter.parameterName || parameter.parameterCode)
     }))
+    // the chosen parameter, else the first that holds a number (a chart), else the first logged
+    const numeric = numericParameterTypes(logged.map(parameter => parameter.parameterTypeEnumId))
+    const firstNumeric = logged.find(parameter => numeric.has(parameter.parameterTypeEnumId))
     const parameterId = logged.some(parameter => parameter.parameterId === p.parameterId) ? p.parameterId
-        : logged.length ? logged[0].parameterId : null
+        : firstNumeric ? firstNumeric.parameterId : logged.length ? logged[0].parameterId : null
     let frame = {fields: []}
     let panel = null
     let pointCount = 0
