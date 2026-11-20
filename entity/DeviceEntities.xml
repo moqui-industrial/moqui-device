@@ -501,8 +501,8 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="connectionName" type="text-short">
             <description>The device connection of a direct request (routerEnumId DrrDirect): its endpoint, driver and
                 credentials, or the destination of a file transfer. A broker request (routerEnumId DrrBroker or a child)
-                has none: it uses the broker of the properties device_broker_uri, device_broker_username and
-                device_broker_password.</description></field>
+                has none: it uses the broker of moqui-device@broker-uri, @broker-username and
+                @broker-password.</description></field>
         <field name="timeout" type="number-integer">
             <description>The maximum time in milliseconds to wait before timeout.</description></field>
         <field name="pollingInterval" type="number-integer">

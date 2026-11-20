@@ -279,10 +279,10 @@ fn next_log_sequence(ef: &EntityFacade, parameter_id: &str) -> Result<Decimal, E
         .ok_or_else(|| Error::new("Log sequence overflow"))
 }
 
-/// The devices in the scope of the gateway this process is (`device_gateway_device_id`): `None` without a gateway,
+/// The devices in the scope of the gateway this process is (`moqui-device@gateway-device-id`): `None` without a gateway,
 /// an error message for every sample when its identity is not ready.
 fn gateway_scope() -> Result<Result<Option<HashSet<String>>, String>, Error> {
-    let gateway = moqui_lib::env::get_prop_or_env("device_gateway_device_id");
+    let gateway = moqui_core::context::conf_env::setting("moqui-device@gateway-device-id");
     if gateway.is_empty() {
         return Ok(Ok(None));
     }

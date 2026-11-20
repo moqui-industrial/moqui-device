@@ -26,7 +26,7 @@ along with this software (see the LICENSE.md file). If not, see
             DgmpRemoteIO, DgmpSafetyRemoteIO, DgmpExtremeConditionRemoteIO).
         </description>
         <in-parameters>
-            <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
+            <parameter name="gatewayDeviceId"><description>Default: moqui-device@gateway-device-id.</description></parameter>
         </in-parameters>
         <out-parameters>
             <parameter name="gatewayDeviceId"/>
@@ -36,12 +36,12 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="controllerDeviceIds" type="List"/>
         </out-parameters>
         <actions>
-            <set field="gatewayDeviceId" from="gatewayDeviceId || System.getProperty('device_gateway_device_id') || null"/>
+            <set field="gatewayDeviceId" from="gatewayDeviceId || ec.factory.getConfValue('moqui-device@gateway-device-id') || null"/>
             <set field="ready" from="false"/>
             <set field="scopedDeviceIds" from="[]"/>
             <set field="controllerDeviceIds" from="[]"/>
             <if condition="!gatewayDeviceId">
-                <set field="message" value="No gateway identity: set the property device_gateway_device_id."/>
+                <set field="message" value="No gateway identity: set moqui-device@gateway-device-id."/>
                 <return/>
             </if>
             <entity-find-one entity-name="moqui.device.Device" value-field="device">
@@ -94,7 +94,7 @@ along with this software (see the LICENSE.md file). If not, see
             controller in the scope of the gateway (get#GatewayScope); ordered by priority, sequenceNum, requestName.
         </description>
         <in-parameters>
-            <parameter name="gatewayDeviceId"><description>Default: the property device_gateway_device_id.</description></parameter>
+            <parameter name="gatewayDeviceId"><description>Default: moqui-device@gateway-device-id.</description></parameter>
         </in-parameters>
         <out-parameters>
             <parameter name="gatewayDeviceId"/>
@@ -138,7 +138,7 @@ along with this software (see the LICENSE.md file). If not, see
             After notifyAfterAttempts failures in a row the users are notified once (notify#AcquisitionError); the
             attempts go on, and the restart is logged. While the discovery fails, the requests found last are
             restored. An explicit unsubscribe stops the restoration of that request. The property
-            device_gateway_restore_subscriptions=false turns it off for this instance.
+            moqui-device@gateway-restore-subscriptions false turns it off for this instance.
         </description>
         <in-parameters>
             <parameter name="notifyAfterAttempts" type="Integer" default="3"/>
@@ -171,7 +171,7 @@ along with this software (see the LICENSE.md file). If not, see
     <service verb="notify" noun="InboundState" authenticate="false">
         <description>
             Tells the users, with a notification on the topic DeviceInboundFailed or DeviceInboundRecovered, that the samples of a
-            subscription or polling request have failed to store for device_gateway_error_notification_seconds
+            subscription or polling request have failed to store for moqui-device-gateway@error-notification-seconds
             (inboundError), store again after such a notice (inboundRecovered), or were discarded because the gateway
             persistence queue was full (queueFull: polling and OPC UA samples, which no broker keeps). Called by the
             persistence worker.
@@ -183,7 +183,7 @@ along with this software (see the LICENSE.md file). If not, see
             <parameter name="errorMessage"/>
             <parameter name="errorDurationSeconds" type="Long"/>
             <parameter name="discardedCount" type="Long"><description>queueFull: the samples discarded since the last notice.</description></parameter>
-            <parameter name="queueCapacity" type="Long"><description>queueFull: device_gateway_queue_capacity, in batches.</description></parameter>
+            <parameter name="queueCapacity" type="Long"><description>queueFull: moqui-device-gateway@queue-capacity, in batches.</description></parameter>
         </in-parameters>
         <actions>
             <if condition="eventType === 'queueFull'">
@@ -192,7 +192,7 @@ along with this software (see the LICENSE.md file). If not, see
                         title:'Device data discarded (' + requestName + ')',
                         text:(discardedCount || 0) + ' values of request ' + requestName + ' were discarded: the gateway'
                             + ' persistence queue (' + (queueCapacity || 0) + ' batches) was full. Check the database, or'
-                            + ' raise device_gateway_queue_capacity.'}"/>
+                            + ' raise moqui-device-gateway@queue-capacity.'}"/>
                 <return/>
             </if>
             <set field="failing" from="eventType === 'inboundError'"/>

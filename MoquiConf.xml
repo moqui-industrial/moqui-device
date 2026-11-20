@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <moqui-conf xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/moqui-conf-3.xsd">
-    <default-property name="onnx.session.cache.max" value="8"/>
-    <!-- The broker of every broker request (routerEnumId DrrBroker or a child), one per instance: an MQTT 5 broker
-         as paho-mqtt5:?brokerUrl=tcp://host:1883 (ssl:// for TLS) or mqtt://host:1883, with options such as qos;
-         the qos and retained of a DeviceRequest override those of the URI. Its user and password go in the two
-         properties below, the password in runtime/.env, never in the URI. -->
-    <default-property name="device_broker_uri" value="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1"/>
-    <default-property name="device_broker_username" value=""/>
-    <default-property name="device_broker_password" value=""/>
-    <!-- The DeviceGroupMember (DgmpEdgeGateway) Device this instance is. Set: subscriptions of the controllers in its
-         scope are restored after a start and requests outside its scope are refused; empty: no restoration, no scope. -->
-    <default-property name="device_gateway_device_id" value=""/>
-    <!-- false: this instance does not start the subscriptions (only one instance should own them) -->
-    <default-property name="device_gateway_restore_subscriptions" value="true"/>
-    <!-- Where DeviceServices.export#DeviceConfig writes a recipe when its DeviceRequest has no DeviceConnection:
-         file:directory or sftp://host:port/directory -->
-    <default-property name="device_config_export_location" value=""/>
-    <default-property name="device_config_export_location_2" value=""/>
+    <!-- The moqui-device settings (plans/archive/Conf-Paths.md 6.27); each is overridden from the environment by its
+         name, e.g. moqui_conf__moqui_device__gateway_device_id (`moqui conf env` lists them).
+         broker-uri: the broker of every broker request (routerEnumId DrrBroker or a child), one per instance: an MQTT 5
+         broker as paho-mqtt5:?brokerUrl=tcp://host:1883 (ssl:// for TLS) or mqtt://host:1883, with options such as qos;
+         the qos and retained of a DeviceRequest override those of the URI. Its user and password go in broker-username
+         and broker-password, the password in runtime/.env, never in the URI.
+         gateway-device-id: the DeviceGroupMember (DgmpEdgeGateway) Device this instance is. Set: subscriptions of the
+         controllers in its scope are restored after a start and requests outside its scope are refused; empty: no
+         restoration, no scope.
+         gateway-restore-subscriptions: false, this instance does not start the subscriptions (only one instance should
+         own them).
+         config-export-location(-2): where DeviceServices.export#DeviceConfig writes a recipe when its DeviceRequest has
+         no DeviceConnection: file:directory or sftp://host:port/directory.
+         onnx-session-cache-max: the ONNX models kept loaded by the trajectory generator. -->
+    <moqui-device broker-uri="paho-mqtt5:?brokerUrl=tcp://localhost:1883&amp;qos=1" broker-username="" broker-password=""
+            gateway-device-id="" gateway-restore-subscriptions="true" config-export-location="" config-export-location-2=""
+            onnx-session-cache-max="8"/>
     <tools>
         <tool-factory class="moqui_device::TrajectoryGeneratorFactory" init-priority="25"/>
         <tool-factory class="moqui_device::DeviceSubscriptionsFactory" init-priority="25"/>

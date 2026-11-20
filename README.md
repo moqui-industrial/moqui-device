@@ -447,17 +447,17 @@ Any other device is refused. Use
 `after#Samples` for failure-isolated after-store SECAs; it runs only for a batch that
 wrote at least one row, so an unchanged polling cycle calls no service.
 
-| Property | Default | Use |
+| Setting (`<moqui-device>` in `MoquiConf.xml`; environment `moqui_conf__moqui_device__<name>`) | Default | Use |
 |---|---|---|
-| `device_gateway_device_id` | empty | The gateway Device this instance is: a `PhysicalDevice` and a `DgmpEdgeGateway` member of its DeviceGroups. Set: the subscriptions of the controllers in its scope are started, and a request for a device outside its scope is refused. Empty: nothing is started and no scope is checked |
-| `device_gateway_restore_subscriptions` | `true` | `false` on an instance that must not start the subscriptions |
-| `device_config_export_location`, `device_config_export_location_2` | empty | Where `export#DeviceConfig` writes a recipe when its request has no connection |
+| `gateway-device-id` | empty | The gateway Device this instance is: a `PhysicalDevice` and a `DgmpEdgeGateway` member of its DeviceGroups. Set: the subscriptions of the controllers in its scope are started, and a request for a device outside its scope is refused. Empty: nothing is started and no scope is checked |
+| `gateway-restore-subscriptions` | `true` | `false` on an instance that must not start the subscriptions |
+| `config-export-location`, `config-export-location-2` | empty | Where `export#DeviceConfig` writes a recipe when its request has no connection |
 
 MR-Moqui has no startup hook, so the service job `start_DeviceGatewaySubscriptions`
 calls `start#Subscriptions` every minute. Each run looks up again every active
 `DrtSubscribe`, `DrtEvent`, `DrtStateChange` and `DrtCyclic` request, and every
 `DrtRead` with a `pollingInterval`, of the controllers in the scope of
-`device_gateway_device_id`, and asks `run#DeviceRequest` for each: one that runs
+`moqui-device@gateway-device-id`, and asks `run#DeviceRequest` for each: one that runs
 answers `unchanged`, one that does not (after a restart, or when its connection
 was lost) is started. A failed start is tried again without limit: after
 `retryDelayMillis` (1 minute), then after twice the previous wait, up to
@@ -521,8 +521,8 @@ for the parameter write.
 so that it can work on its recipes offline. The destination is the
 `DeviceConnection` of the request (its `transportConfig`, `file:` or `sftp://`,
 and its options, as for a content transfer); without a connection, the
-properties `device_config_export_location` and, when set,
-`device_config_export_location_2`:
+settings `moqui-device@config-export-location` and, when set,
+`@config-export-location-2`:
 
 ```
 moqui.device.DeviceServices.export#DeviceConfig
@@ -690,7 +690,7 @@ path end-to-end:
 | `DeviceRequest` | `requestName = ROBOT_ARM_TRAJECTORY_EXPORT` |
 
 The `DeviceRequest` is an MQTT write without items, on the broker of
-`device_broker_uri`; `query` is the topic (`moqui/robot/arm1/trajectory`).
+`moqui-device@broker-uri`; `query` is the topic (`moqui/robot/arm1/trajectory`).
 
 To dispatch after planning:
 
@@ -939,7 +939,7 @@ The model is `MathModel` -> `MathModelDefContent` (`MmCntOnnx`) ->
 `contentLocation`, read through the Moqui resource facade. A local or
 `component://` file is loaded once and kept by the tool's factory while its
 size and time, and those of an adjacent `<model>.onnx.data` file, stay the same;
-up to `onnx.session.cache.max` models (default 8, the least recently used
+up to `moqui-device@onnx-session-cache-max` models (default 8, the least recently used
 leaves first). A model at another kind of location is copied to a temporary
 directory with its `.data` file and loaded for the call, as the Groovy version
 did with every model. Calls on one model run one at a time; different models run

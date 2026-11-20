@@ -59,7 +59,7 @@ along with this software (see the LICENSE.md file). If not, see
     <!--
         Minimal records needed to test moqui.device.DeviceServices.export#Trajectory; moqui-device-gateway sets
         the runServiceName of the request.
-        The trajectory is published to the broker of the property device_broker_uri.
+        The trajectory is published to the broker of moqui-device@broker-uri.
         The MQTT topic in DeviceRequest.query must match the MqttParameterSub subscription
         on the PLC side (JsonToParametersMapper expected keys: "X","Y","Z","A","B","C"
         for TCP pose trajectories, or "J1"…"J6" for joint-space trajectories).

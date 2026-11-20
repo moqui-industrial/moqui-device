@@ -180,7 +180,7 @@ pub fn start(ec: &ExecutionContext, _: &ServiceInfo<'_>, params: &Parameters) ->
     let mut started = Vec::new();
     let mut failed = Vec::new();
     let mut out = Parameters::new();
-    if moqui_lib::env::get_prop_or_env("device_gateway_restore_subscriptions") == "false" {
+    if moqui_core::context::conf_env::setting("moqui-device@gateway-restore-subscriptions") == "false" {
         out.insert("startedRequestNames".into(), list(started));
         out.insert("failedRequestNames".into(), list(failed));
         return Ok(out);

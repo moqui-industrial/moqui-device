@@ -26,7 +26,7 @@
 //! - `sessionCount()`, `loadCount()`, `clear()`: the loaded models, which the factory keeps between calls.
 //!
 //! A local model file is loaded once and kept while its size and time (and those of its `.data` file) stay the same,
-//! up to `onnx.session.cache.max` models; the Groovy version loaded the model on every call. A model at another kind
+//! up to `moqui-device@onnx-session-cache-max` models; the Groovy version loaded the model on every call. A model at another kind
 //! of location is copied to a temporary directory and loaded for the call, as the Groovy version did.
 
 use base64::Engine;
@@ -309,7 +309,7 @@ mod onnx {
             .map_err(|_| "the ONNX session registry is poisoned".to_string())?;
         if !entries.get(&key).is_some_and(|entry| entry.fingerprint == fingerprint) {
             let session = load(path)?;
-            let max = moqui_lib::env::get_prop_or_env("onnx.session.cache.max")
+            let max = moqui_core::context::conf_env::setting("moqui-device@onnx-session-cache-max")
                 .parse::<usize>()
                 .unwrap_or(8)
                 .max(1);

@@ -4,6 +4,6 @@ suite(["DevicesWalk"], {
     server: {
         components: ["moqui-device"],
         specs: ["DevicesClientFixtures"],
-        properties: {device_gateway_restore_subscriptions: "false"}
+        properties: {moqui_conf__moqui_device__gateway_restore_subscriptions: "false"}
     }
 })

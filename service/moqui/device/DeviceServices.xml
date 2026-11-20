@@ -258,8 +258,8 @@ along with this software (see the LICENSE.md file). If not, see
 
             The files go to the DeviceConnection of requestName: its transportConfig, file:directory or
             sftp://host:port/directory, with its options and credentials (see transfer#DeviceContent). Without a
-            connection they go to the location in the property device_config_export_location and, when set,
-            device_config_export_location_2, whose SFTP credentials can only be usernameEnv and passwordEnv options.
+            connection they go to the location in moqui-device@config-export-location and, when set,
+            @config-export-location-2, whose SFTP credentials can only be usernameEnv and passwordEnv options.
             All or nothing: when a file fails at any destination, every file the export wrote, at every destination, is
             deleted (a file that replaced an older one too), and the service fails with status failed and errorMessage.
 
@@ -305,11 +305,11 @@ along with this software (see the LICENSE.md file). If not, see
                 <set field="destinations" from="[{endpoint:connection.transportConfig, options:connection.options,
                         username:connection.username, password:connection.password}]"/>
             </then><else>
-                <set field="destinations" from="[System.getProperty('device_config_export_location'),
-                        System.getProperty('device_config_export_location_2')].filter(l => l).map(l => ({endpoint:l}))"/>
+                <set field="destinations" from="[ec.factory.getConfValue('moqui-device@config-export-location'),
+                        ec.factory.getConfValue('moqui-device@config-export-location-2')].filter(l => l).map(l => ({endpoint:l}))"/>
             </else></if>
             <if condition="!destinations.length">
-                <return error="true" message="DeviceRequest ${requestName} has no destination: set its DeviceConnection, or the property device_config_export_location."/>
+                <return error="true" message="DeviceRequest ${requestName} has no destination: set its DeviceConnection, or moqui-device@config-export-location."/>
             </if>
             <set field="transferredFiles" from="[]"/>
             <script>
@@ -473,7 +473,7 @@ along with this software (see the LICENSE.md file). If not, see
             Publishes a planned trajectory for immediate execution (the ephemeral path; a recipe exported with
             export#DeviceConfig is the persistent one). The waypoints of the ApproximatedFunction (get#TrajectoryAxes) go
             out as one JSON message through run#DeviceRequest (the payload parameter): the DeviceRequest is an MQTT write
-            without items, run by its runServiceName, on the broker of device_broker_uri, whose query is the topic that
+            without items, run by its runServiceName, on the broker of moqui-device@broker-uri, whose query is the topic that
             MqttParameterSub on the PLC subscribes to; JsonToParametersMapper there expects the keys X,Y,Z,A,B,C (TCP pose) or J1..J6 (joint space).
 
             Message:

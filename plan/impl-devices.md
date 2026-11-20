@@ -36,7 +36,7 @@ mr-boss's and mr-pass's, as before this phase; moqui-math over its budget under 
   app is refused (403); the walk allows those two page problems.
 - F6: `m-key-chip` has no style of its own in the framework; the id chip takes `q-mr-sm` so it does not touch the name.
 - F7: `./moq test-apps` put the walk's server together with mr-marble's (same conf, both naming fixtures), whose Mantle
-  flow fixtures fail and stop that server; the suite's property `device_gateway_restore_subscriptions=false` gives the
+  flow fixtures fail and stop that server; the suite's `moqui-device@gateway-restore-subscriptions` false gives the
   walk a server of its own (checked with `./moq test-client moqui-device mr-marble --serve`).
 - F8 (review on the HVAC demo): a tab's `default-menu-include` expression is evaluated where the area's `recordKind` is not
   set, so the group's Members tab never showed; GroupDetail is its own screen with its tabs named. A group's parameters
